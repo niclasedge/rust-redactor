@@ -1,0 +1,93 @@
+{
+  "_comment": "Strict-redaction hooks served by the plugin-local redactor binary. The binary is fetched into ${CLAUDE_PLUGIN_ROOT}/bin by /redactor:install (prebuilt, SHA256-verified, Win/macOS/Linux). The quoted ${CLAUDE_PLUGIN_ROOT} path is PATH-independent and resolves redactor / redactor.exe on all OSes. Mirrors examples/strict-redaction/claude/settings.json.",
+  "_hook_design": "Pre-tool: path-guard + bash-strict + network-guard (Bash|PowerShell), read-strict (Read), pre-edit (Edit|MultiEdit|Write), fixed-deny (Grep, NotebookEdit, mcp__.*). Post-tool: per-extension Write|Edit validators.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook pre-bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook pre-read"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook pre-edit"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook deny-grep"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook deny-notebook"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook deny-mcp"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/redactor\" hook post-write"
+          }
+        ]
+      }
+    ]
+  }
+}

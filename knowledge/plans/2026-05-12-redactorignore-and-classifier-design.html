@@ -1,0 +1,1384 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Design Spec — .redactorignore + ML File Classifier</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --fg: #1c1c1c;
+    --fg-dim: #5a5a5a;
+    --accent: #b1480a;
+    --accent-soft: #f4e9dc;
+    --rule: #e1e1de;
+    --code-bg: #f1f1ee;
+    --code-border: #d8d8d4;
+    --ok: #2f7d32;
+    --warn: #a86700;
+    --deny: #9b2d1f;
+    --muted: #8a8a87;
+    --section-bg: #ffffff;
+    --table-header: #efefec;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.55;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 56px 36px 96px;
+  }
+  header.doc-header {
+    border-bottom: 2px solid var(--fg);
+    padding-bottom: 24px;
+    margin-bottom: 40px;
+  }
+  header.doc-header .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11.5px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  header.doc-header h1 {
+    font-size: 34px;
+    line-height: 1.15;
+    margin: 0 0 14px;
+    letter-spacing: -0.01em;
+  }
+  header.doc-header .meta {
+    font-size: 13px;
+    color: var(--fg-dim);
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  header.doc-header .meta span strong {
+    color: var(--fg);
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 56px 0 6px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    letter-spacing: -0.005em;
+  }
+  h2 .num {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  h3 {
+    font-size: 17px;
+    margin: 28px 0 4px;
+    color: var(--fg);
+  }
+  h4 {
+    font-size: 14.5px;
+    margin: 18px 0 4px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  p { margin: 8px 0 14px; }
+  ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+  li { margin: 4px 0; }
+  code {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 5px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+    margin: 14px 0;
+  }
+  pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-size: inherit;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+    margin: 14px 0 20px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    background: var(--table-header);
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 2px solid var(--fg);
+  }
+  blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    margin: 14px 0;
+    color: var(--fg);
+    font-size: 14px;
+  }
+  blockquote p { margin: 4px 0; }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 99px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .tag-new { background: #dfe8db; color: #2f5d24; }
+  .tag-mod { background: #f4e7c6; color: #6f5300; }
+  .tag-deny { background: #f3d5cf; color: var(--deny); }
+  .tag-ok { background: #d4ecd6; color: var(--ok); }
+  .tag-warn { background: #f4e0bf; color: var(--warn); }
+  .tag-muted { background: #e5e5e2; color: var(--muted); }
+  .callout {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    background: var(--section-bg);
+  }
+  .callout.tradeoff { border-left: 4px solid var(--accent); }
+  .callout.warn { border-left: 4px solid var(--warn); background: #fcf3e1; }
+  .callout.danger { border-left: 4px solid var(--deny); background: #fbe7e3; }
+  .callout h4 { margin-top: 0; color: var(--fg); }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 14px 0;
+  }
+  .mermaid {
+    background: #ffffff;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px;
+    margin: 18px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  nav.toc {
+    background: var(--section-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin-bottom: 40px;
+  }
+  nav.toc h4 { margin-top: 0; }
+  nav.toc ol {
+    margin: 0;
+    padding-left: 22px;
+    columns: 2;
+    column-gap: 28px;
+  }
+  nav.toc li { break-inside: avoid; margin: 2px 0; }
+  nav.toc a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+  .phase {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 14px 0;
+    background: var(--section-bg);
+  }
+  .phase-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .phase-no {
+    font-weight: 700;
+    color: var(--accent);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  .phase-title {
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .phase-size {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  details {
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    background: var(--section-bg);
+  }
+  details summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  details[open] summary { margin-bottom: 10px; }
+  hr.section-end {
+    border: 0;
+    border-top: 1px dashed var(--rule);
+    margin: 36px 0 8px;
+  }
+  .footer-meta {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--fg-dim);
+  }
+  .footer-meta code { font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="doc-header">
+  <div class="eyebrow">Design Spec · Phase 1 → Implementation</div>
+  <h1>.redactorignore + ML File Classifier</h1>
+  <div class="meta">
+    <span><strong>Datum:</strong> 2026-05-12</span>
+    <span><strong>Projekt:</strong> rust-redactor</span>
+    <span><strong>Status:</strong> Draft — pending user review</span>
+    <span><strong>Autor:</strong> Niclas (brainstormed mit Claude Opus 4.7)</span>
+    <span><strong>Folge-Spec:</strong> Implementation Plan via <code>superpowers:writing-plans</code></span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h4>Inhalt</h4>
+  <ol>
+    <li><a href="#overview">Übersicht &amp; Motivation</a></li>
+    <li><a href="#sec1">Architektur &amp; Komponenten</a></li>
+    <li><a href="#sec2"><code>.redactorignore</code> Format &amp; Default-Blocks</a></li>
+    <li><a href="#sec3">Self-Protection &amp; Project-Unlock</a></li>
+    <li><a href="#sec4">classify-files Subcommand</a></li>
+    <li><a href="#sec5">Python Sidecar Architektur</a></li>
+    <li><a href="#sec6">CLI-Übersicht &amp; Migration</a></li>
+    <li><a href="#sec7">Testing-Strategie</a></li>
+    <li><a href="#plan">Umsetzungsplan (Phasen)</a></li>
+    <li><a href="#decisions">Entscheidungs-Log</a></li>
+    <li><a href="#yagni">YAGNI-Linie</a></li>
+    <li><a href="#open">Offene Punkte</a></li>
+    <li><a href="#verify">Phase-5 Windows-Verifikation &amp; Bug-Fixes (2026-05-13)</a></li>
+    <li><a href="#manual">Manueller Lifecycle-Test (Step-by-Step)</a></li>
+  </ol>
+</nav>
+
+<section id="overview">
+<h2><span class="num">§0</span>Übersicht &amp; Motivation</h2>
+
+<p>
+  Der Redactor erkennt heute Secrets über (a) eingebaute Regex-Patterns (OpenAI/Anthropic-Keys, JWTs, PEM-Blöcke, …) und (b) eine User-Keyword-Liste in <code>~/.config/redactor/keywords.txt</code>. Sensitive Pfade (<code>.env</code>, <code>.ssh/*</code>, <code>.aws/credentials</code>) sind hardcoded im Path-Guard.
+</p>
+
+<p>
+  Dieses Spec führt <strong>eine zweite Sicherheitsstufe</strong> ein:
+</p>
+
+<ul>
+  <li><strong><code>~/.redactorignore</code></strong> — ersetzt <code>keywords.txt</code> vollständig. Eine einzige globale gitignore-style-Datei für persönliche Keywords <em>und</em> Pfade. Self-protected: Tools können sie weder lesen noch editieren.</li>
+  <li><strong>Default-Blocks für Office-Docs &amp; Crypto-Container</strong> — <code>.xlsx</code>, <code>.docx</code>, <code>.pdf</code>, <code>.kdbx</code>, <code>.gpg</code> etc. werden ohne Konfiguration geblockt, weil Read-Tool sie nicht sinnvoll parsen kann oder weil sie per Definition Secrets enthalten.</li>
+  <li><strong>Project-Level Unlock</strong> via <code>.redactor.toml [allow]</code> — pro Projekt kann ein User Default-Blocks oder User-Pfade gezielt freischalten (z.B. Test-Fixtures).</li>
+  <li><strong>ML-basierter Klassifikator</strong> — neuer Subcommand <code>redactor classify-files &lt;dir&gt;</code> nutzt Microsoft Presidio + GLiNER (multilingual PII-Modell) via Python-Sidecar, um sensitive Dateien automatisch zu erkennen. Output landet in <code>~/.redactorignore.suggested</code> für manuelle Review; <code>redactor classify-merge</code> übernimmt den interaktiven Übertrag.</li>
+</ul>
+
+<div class="callout tradeoff">
+  <h4>Kern-Tradeoff dieses Specs</h4>
+  <p><strong>Komplexität +</strong>: Python-Sidecar mit ~1 GB ML-Modellen ist eine signifikante Architektur-Erweiterung. uv-managed venv, Lifecycle-Subcommands (install/update/uninstall), Cross-Plattform-Pflege.</p>
+  <p><strong>Sicherheit +</strong>: Personalisierte Geheimnislisten + ML-Klassifikation decken Lücken ab, die Regex-only nicht erreichen kann (Steuerdokumente, Personalakten, Versicherungsdaten).</p>
+  <p><strong>Mitigation</strong>: Sidecar ist <em>strikt optional</em> — Path-Guard und <code>.redactorignore</code> funktionieren ohne Python. <code>classify-files</code> ist der einzige Code-Pfad, der den Sidecar braucht.</p>
+</div>
+</section>
+
+<section id="sec1">
+<h2><span class="num">§1</span>Architektur &amp; Komponenten</h2>
+
+<h3>1.1 Neue &amp; geänderte Module</h3>
+
+<table>
+  <thead><tr><th>Pfad</th><th>Status</th><th>Verantwortung</th></tr></thead>
+  <tbody>
+    <tr><td><code>src/ignorefile.rs</code></td><td><span class="tag tag-new">NEU</span></td><td>Parser für <code>.redactorignore</code>, Resolver Keyword/Path/Negation, Glob-Compiler</td></tr>
+    <tr><td><code>src/classify.rs</code></td><td><span class="tag tag-new">NEU</span></td><td>Rust-Seite des ML-Klassifikators: walkdir, Skip-Filter, Sidecar-IPC</td></tr>
+    <tr><td><code>classifier-py/</code></td><td><span class="tag tag-new">NEU</span></td><td>Python-Sidecar (Presidio + GLiNER), eigenes Verzeichnis im Repo</td></tr>
+    <tr><td><code>src/config.rs</code></td><td><span class="tag tag-mod">GEÄNDERT</span></td><td>Lädt jetzt <code>~/.redactorignore</code> statt <code>keywords.txt</code>; Legacy-Migration-Helper</td></tr>
+    <tr><td><code>src/hook.rs</code></td><td><span class="tag tag-mod">GEÄNDERT</span></td><td>Path-Guard erweitert um <code>.redactorignore</code>-Pfade + Office/Crypto-Defaults + <code>[allow]</code>-Precedence; neuer Subcommand <code>pre-edit</code></td></tr>
+    <tr><td><code>src/main.rs</code></td><td><span class="tag tag-mod">GEÄNDERT</span></td><td>Neue Top-Level-Subcommands: <code>classify-files</code>, <code>classify-merge</code>, <code>classifier-{install,update,status,uninstall}</code>, <code>migrate-keywords</code></td></tr>
+  </tbody>
+</table>
+
+<h3>1.2 Laufzeit-Flow (Hook-Pfad)</h3>
+
+<div class="mermaid">
+flowchart TB
+    Tool["Claude Code<br/>Tool Call"] --> Match{"PreToolUse<br/>matcher"}
+    Match -->|"Bash · PowerShell"| PreBash["redactor hook<br/>pre-bash"]
+    Match -->|"Read"| PreRead["redactor hook<br/>pre-read"]
+    Match -->|"Edit · MultiEdit · Write"| PreEdit["redactor hook<br/>pre-edit  (NEU)"]
+
+    PreBash --> Guard["Path-Guard"]
+    PreRead --> Guard
+    PreEdit --> Guard
+
+    Guard -.lädt einmal pro Hook-Call.-> Ign["~/.redactorignore"]
+    Guard -.lädt einmal pro Hook-Call.-> Toml["&lt;cwd&gt;/.redactor.toml<br/>[allow]"]
+    Guard -.hardcoded.-> HC["Crypto · .env · .ssh · …"]
+
+    Guard -->|"deny"| Block["Tool blockiert<br/>+ Reason an Modell"]
+    Guard -->|"allow"| Ok["Tool läuft"]
+    Ok --> Post["PostToolUse:<br/>pattern pipeline"]
+    Post --> Out["Modell sieht<br/>redacted output"]
+</div>
+
+<h3>1.3 Klassifikations-Flow (off-path, manual)</h3>
+
+<div class="mermaid">
+sequenceDiagram
+    actor U as User
+    participant R as redactor (Rust)
+    participant FS as Filesystem
+    participant P as Python Sidecar
+    participant M as GLiNER + Presidio
+
+    U->>R: redactor classify-files ~/Documents
+    R->>FS: walkdir + skip patterns
+    FS-->>R: file list (path, size, 4 KB preview)
+    R->>R: pre-filter (crypto, size, hidden)
+    R->>P: stdin JSON {files, labels}
+    loop pro File
+        P->>M: analyze(content + filename)
+        M-->>P: entities + scores
+        P->>P: aggregate → label-set + confidence
+    end
+    P-->>R: stdout JSON {results}
+    R->>R: threshold filter (default 0.6)
+    R->>FS: schreibt ~/.redactorignore.suggested
+    R-->>U: Summary (X / Y files above threshold)
+
+    Note over U,R: später, separater Step
+    U->>R: redactor classify-merge .suggested
+    R-->>U: interaktiv yes/no pro Zeile
+    U->>R: confirm
+    R->>FS: append zu ~/.redactorignore (dedupliziert)
+</div>
+</section>
+
+<section id="sec2">
+<h2><span class="num">§2</span><code>.redactorignore</code> Format &amp; Default-Blocks</h2>
+
+<h3>2.1 Beispiel-Datei</h3>
+
+<pre><code># ~/.redactorignore
+# Persönliche Keywords + Pfade. Gilt global für alle Sessions.
+
+# === Keywords ===
+Alice Mustermann
+Bob Schmidt
+PROJECT-NIGHTHAWK
+internal-host.corp
+
+# === Pfade (gitignore-style) ===
+~/Documents/Steuer/
+~/Documents/Personalakten/**
+~/Documents/Versicherung/
+*.kdbx
+~/Projects/kunde-X/legal/*
+
+# === Negation (re-allow) ===
+!~/Documents/Steuer/musterbeleg.pdf</code></pre>
+
+<h3>2.2 Heuristik: Keyword vs. Pfad</h3>
+
+<p>Jede Nicht-leere, Nicht-Comment-Zeile wird durch folgende Regeln klassifiziert (Reihenfolge wichtig):</p>
+
+<div class="mermaid">
+flowchart TD
+    Line["Zeile (trimmed)"] --> Empty{"empty oder<br/>beginnt mit #?"}
+    Empty -->|yes| Skip["überspringen"]
+    Empty -->|no| Neg{"beginnt mit !?"}
+    Neg -->|yes| StripN["! abschneiden,<br/>als Negation flaggen"]
+    Neg -->|no| Plain["plain entry"]
+    StripN --> Detect
+    Plain --> Detect{"enthält / \\ ~<br/>oder Glob-Char<br/>(* ? [ ])?"}
+    Detect -->|yes| Path["→ Pfad-Pattern<br/>(globset)"]
+    Detect -->|no| Kw["→ Keyword<br/>(literal, case-insensitive)"]
+</div>
+
+<div class="callout tradeoff">
+  <h4>Edge-Case: Keyword das ein <code>/</code> enthält</h4>
+  <p>Z.B. URL-Snippet <code>example.com/internal-path</code> würde fälschlich als Pfad geparst. Workaround: explizites Quoten — <code>"example.com/internal-path"</code> wird IMMER als Keyword behandelt. Implementiert via Anführungszeichen-Stripping vor der Heuristik.</p>
+</div>
+
+<h3>2.3 Default-Blocks (zusätzlich zum existierenden Path-Guard)</h3>
+
+<p><strong>Existierender Path-Guard (unverändert):</strong> <code>*.env</code>, <code>.envrc</code>, <code>id_rsa*</code>, <code>.ssh/*</code> (außer <code>known_hosts</code>), <code>.aws/credentials</code>, <code>.aws/config</code>, <code>**/*.pem</code>, <code>**/*.key</code>, <code>**/secrets/**</code></p>
+
+<h4>Neu — Office-Docs (nur Read-Tool, Bash erlaubt)</h4>
+
+<table>
+  <thead><tr><th>Pattern</th><th>Begründung</th><th>Read</th><th>Bash</th></tr></thead>
+  <tbody>
+    <tr><td><code>**/*.xlsx</code>, <code>*.xls</code>, <code>*.xlsm</code></td><td>ZIP-XML — Read dumpt Binär; oft Finanzdaten</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-ok">ALLOW</span></td></tr>
+    <tr><td><code>**/*.docx</code>, <code>*.doc</code></td><td>wie oben</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-ok">ALLOW</span></td></tr>
+    <tr><td><code>**/*.pptx</code>, <code>*.ppt</code></td><td>wie oben</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-ok">ALLOW</span></td></tr>
+    <tr><td><code>**/*.pdf</code></td><td>Binär; <code>pdf</code>-Skill nutzt strukturiertes Parsing via Bash</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-ok">ALLOW</span></td></tr>
+  </tbody>
+</table>
+
+<h4>Neu — Crypto-Container (überall geblockt)</h4>
+
+<table>
+  <thead><tr><th>Pattern</th><th>Begründung</th><th>Read</th><th>Bash</th></tr></thead>
+  <tbody>
+    <tr><td><code>**/*.kdbx</code>, <code>*.kdb</code></td><td>KeePass-Datenbank</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-deny">DENY</span></td></tr>
+    <tr><td><code>**/*.gpg</code>, <code>*.pgp</code>, <code>*.asc</code></td><td>GPG-verschlüsselt</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-deny">DENY</span></td></tr>
+    <tr><td><code>**/*.age</code></td><td>age-verschlüsselt</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-deny">DENY</span></td></tr>
+    <tr><td><code>**/*.p12</code>, <code>*.pfx</code></td><td>PKCS#12 Cert-Bundles</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-deny">DENY</span></td></tr>
+    <tr><td><code>**/*.keychain-db</code></td><td>macOS Keychain</td><td><span class="tag tag-deny">DENY</span></td><td><span class="tag tag-deny">DENY</span></td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <h4>Explizit ausgenommen: CSV</h4>
+  <p>CSV wird <strong>nicht</strong> in die Default-Block-Liste aufgenommen. Begründung: Plaintext + es existiert bereits ein direkter Strukturmodus (<code>redactor --type csv data.csv</code>) und ein <code>pre-bash struct-file guard</code>. Doppelung würde nur Verwirrung stiften.</p>
+</div>
+</section>
+
+<section id="sec3">
+<h2><span class="num">§3</span>Self-Protection &amp; Project-Level Unlock</h2>
+
+<h3>3.1 Self-Protection für <code>~/.redactorignore</code></h3>
+
+<p>Hardcoded in <code>hook.rs</code> path-guard:</p>
+
+<pre><code>fn is_self_protected(path: &amp;Path) -&gt; bool {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let home_ignore = dirs::home_dir().unwrap().join(".redactorignore");
+    canonical == home_ignore.canonicalize().unwrap_or(home_ignore)
+}</code></pre>
+
+<p>Aufgerufen aus drei Hook-Subcommands:</p>
+
+<ul>
+  <li><code>pre-read</code> — checkt <code>tool_input.file_path</code></li>
+  <li><code>pre-bash</code> — checkt alle pfadähnlichen Argumente (existierender Code)</li>
+  <li><code>pre-edit</code> (NEU) — matcher <code>Edit | MultiEdit | Write</code>, checkt <code>tool_input.file_path</code></li>
+</ul>
+
+<div class="callout">
+  <h4>Warum <code>pre-edit</code> trotz Read-Block-Indirection?</h4>
+  <p>Edit und MultiEdit verlangen in Claude Code einen vorherigen Read — wenn Read geblockt ist, sind sie indirekt mitgeblockt. <strong>Write</strong> kann jedoch <em>neue</em> Files anlegen, ohne vorher zu lesen. <code>pre-edit</code> ist primär dafür da, dass z.B. <code>Write(~/.ssh/config, …)</code> oder <code>Write(~/.redactorignore, …)</code> nicht stillschweigend einen geschützten Pfad anlegen.</p>
+  <p>Edit/MultiEdit im selben Matcher sind defense-in-depth — falls Claude Code's Read-Before-Edit-Invariante irgendwann fällt.</p>
+</div>
+
+<h3>3.2 Project-Level Unlock</h3>
+
+<p>Im Repo-Root eines Projekts kann eine <code>.redactor.toml</code> (existiert bereits) gezielte Ausnahmen definieren:</p>
+
+<pre><code># &lt;project&gt;/.redactor.toml
+
+[[patterns.custom]]
+name = "internal_id"
+re = 'INT-\d{6}'
+
+[whitelist]
+# (existing) skip Secret-Detection-Patterns innerhalb dieser Files
+paths = ["docs/example.cfg"]
+
+# NEU — File-Read-Unlocks
+[allow]
+paths = [
+    "fixtures/sample-customer.xlsx",
+    "fixtures/**/*.docx",
+    "data/test-fixtures/*",
+]
+filetypes = ["xlsx", "docx"]   # default-blocks dieser Typen aufheben
+</code></pre>
+
+<h3>3.3 Precedence-Reihenfolge</h3>
+
+<div class="mermaid">
+flowchart TD
+    P["Tool will Pfad lesen/<br/>schreiben/editieren"] --> S1{"Self-protect<br/>~/.redactorignore?"}
+    S1 -->|"yes"| D1["DENY<br/>(unblockable)"]
+    S1 -->|"no"| S2{"Crypto-Container<br/>(.kdbx, .gpg, …)?"}
+    S2 -->|"yes"| D2["DENY<br/>(unblockable)"]
+    S2 -->|"no"| S3{".env-Familie /<br/>.ssh / .aws creds?"}
+    S3 -->|"yes"| D3["DENY<br/>(unblockable)"]
+    S3 -->|"no"| S4{"Project [allow].paths<br/>oder [allow].filetypes<br/>matches?"}
+    S4 -->|"yes"| A1["ALLOW<br/>(override)"]
+    S4 -->|"no"| S5{"in ~/.redactorignore<br/>paths?"}
+    S5 -->|"yes"| D4["DENY<br/>(user list)"]
+    S5 -->|"no"| S6{"default office-doc<br/>UND Read-Tool?"}
+    S6 -->|"yes"| D5["DENY<br/>(office default)"]
+    S6 -->|"no"| A2["ALLOW"]
+</div>
+
+<table>
+  <thead><tr><th>Block-Quelle</th><th>Durch <code>[allow]</code> override-bar?</th></tr></thead>
+  <tbody>
+    <tr><td><code>~/.redactorignore</code> self-protect</td><td><span class="tag tag-deny">NEIN</span> — hardcoded</td></tr>
+    <tr><td>Crypto-Container (<code>.kdbx</code>/<code>.gpg</code> …)</td><td><span class="tag tag-deny">NEIN</span></td></tr>
+    <tr><td><code>.env</code>-Familie / <code>.ssh</code>/<code>.aws/credentials</code></td><td><span class="tag tag-deny">NEIN</span> — break-glass nur via <code>--no-config</code></td></tr>
+    <tr><td>Office-Doc-Defaults (<code>.xlsx</code>/<code>.docx</code>/<code>.pdf</code>)</td><td><span class="tag tag-ok">JA</span> — via <code>paths</code> oder <code>filetypes</code></td></tr>
+    <tr><td><code>~/.redactorignore</code> Pfad-Patterns</td><td><span class="tag tag-ok">JA</span> — via <code>paths</code></td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="sec4">
+<h2><span class="num">§4</span><code>classify-files</code> Subcommand</h2>
+
+<h3>4.1 CLI-Oberfläche</h3>
+
+<pre><code># Grundform
+redactor classify-files &lt;directory&gt;
+
+# Mit Optionen
+redactor classify-files ~/Documents/ \
+    --max-depth 3 \
+    --max-file-size 10MB \
+    --threshold 0.7 \
+    --output ~/.redactorignore.suggested \
+    --format text         # text | json | yaml
+    --apply               # shortcut: skip review, direkt anhängen
+    --apply --yes-interactive   # synonym zum separaten classify-merge --yes
+</code></pre>
+
+<h3>4.2 Workflow intern</h3>
+
+<ol>
+  <li><strong>walkdir</strong> auf <code>&lt;directory&gt;</code>. Skip-Listen: <code>.git/</code>, <code>.venv/</code>, <code>node_modules/</code>, Symlinks, Hidden-Dirs, Files &gt; <code>--max-file-size</code> (default 5 MB).</li>
+  <li><strong>Pre-Filter</strong>: Crypto-Container werden gar nicht erst dem Sidecar gegeben (sind eh hardcoded blockiert). Spart Latenz.</li>
+  <li><strong>Sidecar-Call</strong>: JSON über stdin/stdout an <code>~/.config/redactor/classifier/venv/bin/python -m classify</code>. Pro File: <code>{path, filename, size, content_preview}</code> (erste 4 KB UTF-8-lossy).</li>
+  <li><strong>Threshold-Filter</strong>: nur Results mit <code>confidence ≥ --threshold</code> übernehmen.</li>
+  <li><strong>Output</strong>: Suggestions-Datei schreiben (Default <code>~/.redactorignore.suggested</code>), Summary auf stderr.</li>
+</ol>
+
+<h3>4.3 Format der <code>.suggested</code>-Datei</h3>
+
+<pre><code># redactor classify-files — suggestions
+# generated: 2026-05-12T22:45:01+02:00
+# input:     /Users/alice/Documents
+# files:     1247 scanned, 89 above threshold
+# threshold: 0.6
+
+# confidence=0.92  labels=TAX_DOC,FINANCIAL_RECORD
+# evidence="Erkennung: Einkommensteuer (0.94), Finanzamt (0.91)"
+/Users/alice/Documents/Steuer/2024/erklaerung.pdf
+
+# confidence=0.88  labels=PERSONAL_RECORD,NAME_LIST
+# evidence="14 person names detected by GLiNER"
+/Users/alice/Documents/Kontakte/familienliste.txt
+
+# confidence=0.81  labels=CREDENTIAL,PRIVATE_KEY
+# evidence="contains BEGIN OPENSSH PRIVATE KEY block"
+/Users/alice/Backups/old-keys/id_rsa.bak</code></pre>
+
+<h3>4.4 Merge-Helper</h3>
+
+<pre><code># Interaktiv: yes/no/skip-rest pro Zeile
+redactor classify-merge ~/.redactorignore.suggested
+
+# Non-interaktiv (vertraut der ML komplett)
+redactor classify-merge ~/.redactorignore.suggested --yes
+
+# Dry-run
+redactor classify-merge ~/.redactorignore.suggested --dry-run</code></pre>
+
+<p>
+  Schreibt nach <code>~/.redactorignore</code>, dedupliziert gegen existierende Einträge, behält bestehende Comments unverändert. Comments aus <code>.suggested</code> werden <strong>nicht</strong> mitkopiert.
+</p>
+
+<h3>4.5 Fehlerbilder</h3>
+
+<table>
+  <thead><tr><th>Fehlerklasse</th><th>Reaktion</th><th>Exit</th></tr></thead>
+  <tbody>
+    <tr><td>Sidecar nicht installiert</td><td>Hint auf <code>redactor classifier-install</code></td><td>2</td></tr>
+    <tr><td>Sidecar crashed (OOM / korruptes Model)</td><td>Stderr-Output, Hint auf <code>--update</code></td><td>3</td></tr>
+    <tr><td>Sidecar timeout (default 5 min)</td><td>Partial results schreiben, Warning</td><td>0 + warn</td></tr>
+    <tr><td><code>&lt;directory&gt;</code> nicht lesbar</td><td>Fehler, kein .suggested geschrieben</td><td>4</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="sec5">
+<h2><span class="num">§5</span>Python Sidecar Architektur</h2>
+
+<h3>5.1 Verzeichnis-Layout (zur Laufzeit, nach Install)</h3>
+
+<pre><code>~/.config/redactor/classifier/
+├── venv/                       # ~50 MB
+│   └── bin/python              # gespawnt von Rust
+├── models/
+│   ├── gliner/                 # urchade/gliner_multi_pii-v1, ~350 MB
+│   └── spacy/                  # de_core_news_sm + en_core_web_sm, ~100 MB
+├── labels.txt                  # user-editable, default-set vorausbefüllt
+├── config.toml                 # model overrides, device choice
+└── version.json                # { classifier_version, model_versions, installed_at }</code></pre>
+
+<h3>5.2 Im Repo (Source)</h3>
+
+<pre><code>classifier-py/
+├── pyproject.toml              # uv-managed, pinned versions
+├── README.md
+└── src/
+    └── classify/
+        ├── __init__.py
+        ├── __main__.py         # entry: python -m classify
+        ├── analyzer.py         # Presidio + GLiNER wiring
+        ├── labels.py           # default label list + loader
+        └── output.py           # JSON-Schema</code></pre>
+
+<h3>5.3 Sidecar-Deployment-Flow</h3>
+
+<div class="mermaid">
+flowchart LR
+    A["redactor<br/>classifier-install"] --> B["check: uv installed?"]
+    B -->|"no"| Err["Error mit Install-Hint<br/>(brew install uv etc.)"]
+    B -->|"yes"| C["uv venv create<br/>~/.config/redactor/<br/>classifier/venv"]
+    C --> D["uv pip install<br/>(pinned versions)"]
+    D --> E["download GLiNER<br/>urchade/<br/>gliner_multi_pii-v1"]
+    E --> F["download spaCy<br/>de_core_news_sm<br/>+ en_core_web_sm"]
+    F --> G["write version.json<br/>+ config.toml + labels.txt"]
+    G --> H["Done · disk ≈ 550 MB"]
+</div>
+
+<h3>5.4 Default-Konfiguration</h3>
+
+<h4><code>config.toml</code></h4>
+
+<pre><code>[model]
+gliner    = "urchade/gliner_multi_pii-v1"   # multilingual PII-Modell
+spacy_de  = "de_core_news_sm"
+spacy_en  = "en_core_web_sm"
+device    = "auto"                          # auto | cpu | mps | cuda</code></pre>
+
+<h4><code>labels.txt</code> (Default-Set)</h4>
+
+<pre><code>TAX_DOC
+BANK_STATEMENT
+PERSONAL_RECORD
+CREDENTIAL
+PRIVATE_KEY
+MEDICAL_RECORD
+LEGAL_DOC
+PASSWORD_VAULT
+CUSTOMER_DATA
+EMPLOYEE_RECORD</code></pre>
+
+<h3>5.5 Rust ↔ Python Interface</h3>
+
+<div class="grid-2">
+  <div>
+    <h4>Request (Rust → Python stdin)</h4>
+    <pre><code>{
+  "version": 1,
+  "labels": ["TAX_DOC", "BANK_STATEMENT",
+             "PERSONAL_RECORD", ...],
+  "files": [
+    {
+      "path": "/Users/.../Steuer/2024.pdf",
+      "filename": "2024.pdf",
+      "size_bytes": 1245678,
+      "content_preview": "Erklärung zur..."
+    }
+  ]
+}</code></pre>
+  </div>
+  <div>
+    <h4>Response (Python → Rust stdout)</h4>
+    <pre><code>{
+  "version": 1,
+  "results": [
+    {
+      "path": "/Users/.../Steuer/2024.pdf",
+      "confidence": 0.92,
+      "labels": ["TAX_DOC",
+                 "FINANCIAL_RECORD"],
+      "evidence": "Einkommensteuer (0.94)..."
+    }
+  ],
+  "warnings": []
+}</code></pre>
+  </div>
+</div>
+
+<h3>5.6 Lifecycle-Subcommands</h3>
+
+<table>
+  <thead><tr><th>Subcommand</th><th>Zweck</th></tr></thead>
+  <tbody>
+    <tr><td><code>redactor classifier-install</code></td><td>Erst-Setup: venv, deps, models. Interaktiv mit Disk-Confirm.</td></tr>
+    <tr><td><code>redactor classifier-install --quiet</code></td><td>für CI / Automatisierung, kein Confirm</td></tr>
+    <tr><td><code>redactor classifier-update</code></td><td>Upgrade pinned versions + neue Model-Versionen</td></tr>
+    <tr><td><code>redactor classifier-status</code></td><td>Zeigt Install-Status, Python-Version, Model-Versionen, Disk-Usage</td></tr>
+    <tr><td><code>redactor classifier-uninstall</code></td><td>Cleanup mit Confirm</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <h4>uv ist Pflicht — kein pip-Fallback</h4>
+  <p>Erste Iteration: Sidecar setzt <code>uv</code> voraus. Wenn nicht installiert → klare Fehlermeldung mit Install-Hint (<code>brew install uv</code> / <code>winget install --id astral-sh.uv</code>). Begründung: weniger Code-Pfade, schnellerer venv-Setup, konsistente Lock-Files.</p>
+</div>
+</section>
+
+<section id="sec6">
+<h2><span class="num">§6</span>CLI-Übersicht &amp; Migration</h2>
+
+<h3>6.1 Neue / geänderte Subcommands</h3>
+
+<table>
+  <thead><tr><th>Subcommand</th><th>Status</th><th>Zweck</th></tr></thead>
+  <tbody>
+    <tr><td><code>classify-files &lt;dir&gt;</code></td><td><span class="tag tag-new">NEU</span></td><td>Klassifiziert Verzeichnis, schreibt <code>.suggested</code></td></tr>
+    <tr><td><code>classify-merge &lt;file&gt;</code></td><td><span class="tag tag-new">NEU</span></td><td>Interaktiver Merge in <code>.redactorignore</code></td></tr>
+    <tr><td><code>classifier-install</code></td><td><span class="tag tag-new">NEU</span></td><td>Erst-Setup: venv + Models</td></tr>
+    <tr><td><code>classifier-update</code></td><td><span class="tag tag-new">NEU</span></td><td>Updates für Deps + Models</td></tr>
+    <tr><td><code>classifier-status</code></td><td><span class="tag tag-new">NEU</span></td><td>Install-Status anzeigen</td></tr>
+    <tr><td><code>classifier-uninstall</code></td><td><span class="tag tag-new">NEU</span></td><td>Cleanup</td></tr>
+    <tr><td><code>migrate-keywords</code></td><td><span class="tag tag-new">NEU</span></td><td>Einmaliger Helper: <code>keywords.txt</code> → <code>~/.redactorignore</code></td></tr>
+    <tr><td><code>hook pre-edit</code></td><td><span class="tag tag-new">NEU</span></td><td>PreToolUse für matcher <code>Edit | MultiEdit | Write</code></td></tr>
+    <tr><td><code>hook check-path &lt;path&gt;</code></td><td><span class="tag tag-new">NEU (intern)</span></td><td>Vom shell-hook genutzt, gibt allow/deny zurück. Logik in Rust statt Shell.</td></tr>
+    <tr><td><code>init-config</code></td><td><span class="tag tag-mod">MOD</span></td><td>Schreibt jetzt auch <code>.redactorignore</code>-Template</td></tr>
+    <tr><td><code>config-path</code></td><td><span class="tag tag-mod">MOD</span></td><td>Zeigt jetzt auch <code>~/.redactorignore</code> + Sidecar-Pfade</td></tr>
+  </tbody>
+</table>
+
+<h3>6.2 Migration von <code>keywords.txt</code></h3>
+
+<p>Du persönlich hast keine <code>keywords.txt</code> (geprüft). Aber andere Repo-User möglicherweise schon. Loader-Logik in <code>config.rs</code>:</p>
+
+<div class="mermaid">
+flowchart TD
+    Load["Config Load"] --> Q1{"~/.redactorignore<br/>existiert?"}
+    Q1 -->|"yes"| Q2{"legacy<br/>keywords.txt<br/>existiert auch?"}
+    Q1 -->|"no"| Q3{"legacy<br/>keywords.txt<br/>existiert?"}
+    Q2 -->|"yes"| W1["Warning + lade<br/>NUR .redactorignore"]
+    Q2 -->|"no"| OK1["lade .redactorignore"]
+    Q3 -->|"yes"| W2["Warning: deprecated.<br/>Lade legacy.<br/>Hint: migrate-keywords"]
+    Q3 -->|"no"| Empty["leere Liste"]
+</div>
+
+<p>Helper <code>redactor migrate-keywords</code>: liest <code>keywords.txt</code>, schreibt nach <code>~/.redactorignore</code>, benennt Legacy nach <code>keywords.txt.bak</code>. Idempotent (zweiter Aufruf = no-op).</p>
+
+<h3>6.3 Documentation-Updates (Pflicht für PR)</h3>
+
+<ul>
+  <li><strong><code>README.md</code></strong>: neue Sections "Personal sensitivity list" + "ML-based file classification"; Hook-Tabelle erweitert</li>
+  <li><strong><code>CLAUDE.md</code></strong>: Path-Guard-Liste um <code>~/.redactorignore</code> ergänzt; <code>pre-edit</code>-Matcher dokumentiert</li>
+  <li><strong><code>examples/strict-redaction/</code></strong>: <code>claude/settings.json</code> kriegt <code>pre-edit</code>-Hook</li>
+  <li><strong><code>knowledge/decisions.md</code></strong>: drei neue Entscheidungen anhängen (Sidecar over Rust ML, <code>[allow]</code> over <code>[whitelist]</code>, <code>gliner_multi_pii-v1</code> Default)</li>
+</ul>
+</section>
+
+<section id="sec7">
+<h2><span class="num">§7</span>Testing-Strategie</h2>
+
+<h3>7.1 Rust-Tests</h3>
+
+<details open>
+<summary><code>tests/redactorignore_parsing.rs</code></summary>
+<ul>
+  <li>Heuristik Keyword vs. Pfad (gitignore-Syntax)</li>
+  <li>Comments und blank lines werden gestrippt</li>
+  <li>Negation (<code>!path</code>) korrekt erkannt</li>
+  <li>Globs (<code>**</code>, <code>?</code>, <code>[abc]</code>) als Pfad klassifiziert</li>
+  <li>Edge: leere Datei, BOM-Header, CRLF line endings, riesige Datei (10 000 Zeilen)</li>
+  <li>Edge: Keyword mit explicit quoting (<code>"foo/bar"</code>)</li>
+</ul>
+</details>
+
+<details>
+<summary><code>tests/path_guard_integration.rs</code></summary>
+<ul>
+  <li>Hardcoded blocks immer aktiv (<code>.env</code>, <code>.kdbx</code>, …)</li>
+  <li>Pfade aus <code>.redactorignore</code> blockiert</li>
+  <li><code>~/.redactorignore</code> selbst self-protected</li>
+  <li><code>[allow]</code> in <code>.redactor.toml</code> überschreibt Office-Doc-Defaults</li>
+  <li><code>[allow]</code> überschreibt <strong>nicht</strong> Crypto / .env / self-protect</li>
+  <li>Precedence-Reihenfolge wie §3.3 spezifiziert</li>
+</ul>
+</details>
+
+<details>
+<summary><code>tests/classify_files_smoke.rs</code></summary>
+<ul>
+  <li>Leeres Verzeichnis → exit 0, leere <code>.suggested</code></li>
+  <li>Skip-Patterns (<code>.git/</code> etc.) respektiert</li>
+  <li>Crypto-Container werden nicht an Sidecar geschickt (vorab Skip)</li>
+  <li><code>--max-file-size</code> cuttet große Files ab</li>
+  <li>Sidecar fehlt → Exit 2 mit klarer Fehlermeldung (mock via <code>REDACTOR_CLASSIFIER_PATH=/nonexistent</code>)</li>
+  <li>Sidecar timeout → partial result + warning</li>
+</ul>
+</details>
+
+<details>
+<summary><code>tests/classify_merge.rs</code></summary>
+<ul>
+  <li>Interaktiv yes/no/skip-rest pro Zeile (via mock stdin)</li>
+  <li><code>--yes</code> appended alles</li>
+  <li><code>--dry-run</code> schreibt nichts</li>
+  <li>Dedup gegen existierende Einträge</li>
+  <li>Comments aus <code>.suggested</code> NICHT propagiert</li>
+</ul>
+</details>
+
+<h3>7.2 Python-Tests (<code>classifier-py/tests/</code>)</h3>
+
+<ul>
+  <li><code>test_analyzer.py</code>: Mock GLiNER-Output → korrekte Aggregation</li>
+  <li><code>test_smoke.py</code> (langsam, <code>pytest -m slow</code>): echtes Model laden, Fixture-Files klassifizieren</li>
+  <li>Invalides JSON-Input → klarer Error</li>
+</ul>
+
+<h3>7.3 Manuelle Test-Szenarien (Pre-Release)</h3>
+
+<ol>
+  <li>Frischer Mac (kein uv, kein Python): <code>classifier-install</code> wirft klare Fehlermeldung mit Install-Hint</li>
+  <li>Nach uv-Install: <code>classifier-install</code> komplett durchläuft (~7-15 min)</li>
+  <li><code>classify-files ~/Documents/</code> auf ~5 GB Daten: akzeptable Latenz, sinnvolle Results</li>
+  <li>Write-Tool versucht <code>~/.ssh/config</code> anzulegen → <code>pre-edit</code> blockt</li>
+  <li>Bash versucht <code>cat ~/.redactorignore</code> → path-guard blockt</li>
+  <li><code>classify-merge --dry-run</code> zeigt korrekt was passieren würde</li>
+</ol>
+</section>
+
+<section id="plan">
+<h2><span class="num">§P</span>Umsetzungsplan (Phasen)</h2>
+
+<p>Implementation in 5 inkrementellen Phasen — jede für sich mergeable und nutzbar. Geschätzte Größenordnungen: S = ≤ 200 LOC, M = 200-500, L = 500-1000.</p>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 1</span>
+    <span class="phase-title"><code>.redactorignore</code> Parser + Path-Guard-Integration</span>
+    <span class="phase-size">Size: M</span>
+  </div>
+  <ul>
+    <li>Neues Modul <code>src/ignorefile.rs</code> mit Parser + Heuristik + Glob-Compiler</li>
+    <li><code>config.rs</code> erweitert: lädt <code>~/.redactorignore</code>, fällt zurück auf legacy <code>keywords.txt</code> mit Warning</li>
+    <li><code>hook.rs</code> path-guard: lädt Pfade aus <code>.redactorignore</code> + self-protect</li>
+    <li>Office-Doc + Crypto Default-Blocks hardcoded ergänzt</li>
+    <li>Tests: <code>redactorignore_parsing.rs</code></li>
+    <li>Docs: <code>README.md</code> Section "Personal sensitivity list"</li>
+  </ul>
+  <p><strong>Akzeptanzkriterien:</strong> User kann <code>.redactorignore</code> anlegen, Keywords erscheinen als <code>&lt;redacted:keyword&gt;</code>, Pfade in der Liste werden bei Read/Bash blockiert, <code>~/.redactorignore</code> selbst ist via Hooks nicht lesbar.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 2</span>
+    <span class="phase-title"><code>pre-edit</code> Hook + Project-Level <code>[allow]</code></span>
+    <span class="phase-size">Size: S</span>
+  </div>
+  <ul>
+    <li>Neuer Subcommand <code>redactor hook pre-edit</code></li>
+    <li><code>.redactor.toml</code> Parser erweitert um <code>[allow]</code>-Section</li>
+    <li>Path-Guard checkt <code>[allow]</code> mit Precedence-Reihenfolge aus §3.3</li>
+    <li><code>examples/strict-redaction/claude/settings.json</code> bekommt <code>pre-edit</code>-Matcher</li>
+    <li>Tests: <code>path_guard_integration.rs</code> erweitert mit <code>[allow]</code>-Szenarien</li>
+  </ul>
+  <p><strong>Akzeptanzkriterien:</strong> Write-Tool kann keine geschützten Pfade neu erstellen. Project-<code>[allow]</code> kann Office-Doc-Defaults und User-<code>.redactorignore</code>-Pfade per Glob freischalten — aber NIE Crypto/.env/.redactorignore-self.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 3</span>
+    <span class="phase-title">Python Sidecar Skeleton + <code>classifier-install</code></span>
+    <span class="phase-size">Size: L</span>
+  </div>
+  <ul>
+    <li><code>classifier-py/</code>-Verzeichnis im Repo mit <code>pyproject.toml</code></li>
+    <li><code>classify/__main__.py</code> liest JSON-Request, schreibt JSON-Response (Stub: alle Files mit confidence=0)</li>
+    <li>Rust-Module <code>src/classify.rs</code>: IPC mit Sidecar via stdin/stdout</li>
+    <li>Subcommand <code>classifier-install</code>: uv venv + uv pip install + Model-Download</li>
+    <li>Subcommands <code>classifier-status</code>, <code>classifier-uninstall</code></li>
+    <li><code>config.toml</code> + <code>labels.txt</code> mit Defaults erstellt</li>
+  </ul>
+  <p><strong>Akzeptanzkriterien:</strong> <code>classifier-install</code> läuft End-to-End auf frischem Mac (uv vorausgesetzt). Sidecar antwortet auf JSON-Request mit Stub-Response. Disk-Footprint ≤ 600 MB.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 4</span>
+    <span class="phase-title">Echte Klassifikation (Presidio + GLiNER) + <code>classify-files</code></span>
+    <span class="phase-size">Size: L</span>
+  </div>
+  <ul>
+    <li><code>classify/analyzer.py</code>: Presidio mit GLiNER als Custom Recognizer wired up</li>
+    <li>File-Aggregation: aus Entity-Counts + Filename-Signals → Confidence pro File</li>
+    <li>Subcommand <code>classify-files</code>: walkdir, Skip-Filter, Sidecar-Call, Threshold-Filter, <code>.suggested</code>-Output</li>
+    <li>Tests: <code>classify_files_smoke.rs</code>, <code>test_analyzer.py</code></li>
+    <li>Docs: <code>README.md</code> Section "ML-based file classification"</li>
+  </ul>
+  <p><strong>Akzeptanzkriterien:</strong> <code>classify-files ~/Documents/</code> liefert für deutsche Steuerdokumente, Personalakten, Crypto-Backups Confidence ≥ 0.7. Latenz ≤ 30 s pro 100 Files auf M4.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 5</span>
+    <span class="phase-title"><code>classify-merge</code> + <code>migrate-keywords</code> + Polish</span>
+    <span class="phase-size">Size: M</span>
+  </div>
+  <ul>
+    <li><code>classify-merge</code> (interaktiv + <code>--yes</code> + <code>--dry-run</code>)</li>
+    <li><code>migrate-keywords</code> Helper</li>
+    <li><code>classifier-update</code></li>
+    <li><code>knowledge/decisions.md</code> mit 3 neuen Entscheidungen ergänzt</li>
+    <li>Manuelle Test-Szenarien durchspielen, eventuelle Korrekturen</li>
+    <li>Release-Notes für v0.7.0</li>
+  </ul>
+  <p><strong>Akzeptanzkriterien:</strong> Full End-to-End-Loop funktioniert: <code>classify-files</code> → Review der <code>.suggested</code> → <code>classify-merge</code> → Path-Guard blockiert neu hinzugefügte Pfade beim nächsten Tool-Call.</p>
+</div>
+</section>
+
+<section id="decisions">
+<h2><span class="num">§D</span>Entscheidungs-Log</h2>
+
+<p>
+  Drei Architektur-Entscheidungen werden in <code>knowledge/decisions.md</code> als neue Einträge dokumentiert (mit Datum 2026-05-12 und einer Verweis-Section auf dieses Spec):
+</p>
+
+<details open>
+<summary>D-1 — Python-Sidecar statt Rust-native ML</summary>
+<p><strong>Entschieden:</strong> ML-Klassifikation wird via Python-Subprocess (Presidio + GLiNER + spaCy) gemacht, nicht via Rust-native Inferenz (z.B. <code>candle</code>, <code>burn</code>).</p>
+<p><strong>Begründung:</strong> Presidio liefert produktionsreife PII-Aggregation und Confidence-Scoring out-of-the-box. Equivalent in Rust nachzubauen = mehrere Wochen Arbeit ohne klaren Mehrwert. GLiNER + spaCy haben weder offizielle noch stabile Rust-Bindings. Der Sidecar ist optional — nur <code>classify-files</code> braucht ihn.</p>
+<p><strong>Trade-off:</strong> +1 Python-Dependency (uv vorausgesetzt), +550 MB Disk-Footprint. Akzeptiert.</p>
+</details>
+
+<details>
+<summary>D-2 — Neue <code>[allow]</code>-Section, nicht <code>[whitelist]</code> erweitern</summary>
+<p><strong>Entschieden:</strong> Project-Level File-Unlocks landen in einer neuen <code>[allow]</code>-Section in <code>.redactor.toml</code>, nicht in der existierenden <code>[whitelist]</code>.</p>
+<p><strong>Begründung:</strong> <code>[whitelist]</code> bedeutet heute "skip pattern detection in this file" — semantisch eine andere Achse als "allow read/edit of this path". Overloading würde Verwirrung produzieren ("warum wird mein File nicht redacted, ich hab's doch in <code>[whitelist]</code> …"). Klare Trennung von Names: <code>[whitelist]</code> = Content-Skip, <code>[allow]</code> = File-Access-Override.</p>
+</details>
+
+<details>
+<summary>D-3 — <code>urchade/gliner_multi_pii-v1</code> als Default-Modell</summary>
+<p><strong>Entschieden:</strong> Default-Model für GLiNER ist <code>urchade/gliner_multi_pii-v1</code>. User kann via <code>config.toml</code> zu beliebigem GLiNER-Modell wechseln.</p>
+<p><strong>Begründung:</strong> Explizit auf PII fine-tuned, multilingual inkl. Deutsch, ~350 MB (passt auf jede SSD), MPS-fähig auf Apple-Silicon. Bessere Out-of-the-Box-Qualität als <code>gliner_multi-v2.1</code> für unseren PII-Detection-Use-Case.</p>
+<p><strong>Re-evaluate when:</strong> Ein neueres Modell mit deutlich besseren PII-Metriken erscheint (Watch: HuggingFace-Trending alle 6 Monate).</p>
+</details>
+</section>
+
+<section id="yagni">
+<h2><span class="num">§Y</span>YAGNI-Linie — was wir explizit NICHT bauen</h2>
+
+<p>Diese Punkte tauchten im Brainstorming auf und sind bewusst <strong>aus dem Scope dieses Specs ausgeschlossen</strong>. Falls wir sie später brauchen → eigenes Spec.</p>
+
+<table>
+  <thead><tr><th>Aus Scope</th><th>Begründung</th></tr></thead>
+  <tbody>
+    <tr><td>Content-Sanitizing in <code>pre-edit</code> (vor Write/Edit-Inhalt prüfen)</td><td>Komplexere Hook-Logik; in dieser Iteration nur Path-Block</td></tr>
+    <tr><td>Project-level <code>.redactorignore</code>-File (statt nur global)</td><td>Project-Scope via <code>.redactor.toml [allow]</code> — eine Mechanik reicht</td></tr>
+    <tr><td>Auto-Klassifikation im Hook-Pfad</td><td>Latenz + Determinismus-Problem; ML gehört nicht in den enforcing path</td></tr>
+    <tr><td>Daemon/Watch-Mode für automatische Re-Klassifikation</td><td>Solange manual aufgerufen wird, kein Bedarf</td></tr>
+    <tr><td>Cloud-API-Alternative (OpenAI/Anthropic für Klassifikation)</td><td>Datenschutz-Problem: schickt Dateiinhalt an Drittanbieter</td></tr>
+    <tr><td>Ollama-Variante als alternativer Backend</td><td>User entschieden für Presidio+GLiNER (Section 4)</td></tr>
+    <tr><td>Reine Heuristik-Mode ohne Sidecar</td><td>User entschieden für volles ML — kein "graceful degradation"</td></tr>
+    <tr><td>Keyword-Extraction-Modus (Modus 2 aus Brainstorming)</td><td>User: "modus 1 sollte reichen"</td></tr>
+    <tr><td>Cross-Plattform Python-Bundling (PyInstaller, shiv)</td><td>uv vorausgesetzt; klare Fehlermeldung bei fehlendem uv</td></tr>
+    <tr><td>Multiple swappable classifier backends</td><td>Nur Presidio+GLiNER; Model swap-bar via config.toml</td></tr>
+    <tr><td><code>redactor wrap --csv</code>-Modus</td><td>Außerhalb dieses Specs — existing <code>--type csv</code> direct mode reicht</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="open">
+<h2><span class="num">§?</span>Offene Punkte / TBD</h2>
+
+<p>Punkte, bei denen das Spec eine Default-Entscheidung trifft, aber die User-seitig in der Implementation noch geprüft werden sollten:</p>
+
+<ol>
+  <li><strong>Default-Threshold</strong> für <code>classify-files</code> ist 0.6 — Wert wird in Phase 4 anhand realer Files empirisch nachjustiert werden müssen. Initial: 0.6, dann beobachten.</li>
+  <li><strong>Default-Skip-Patterns</strong> könnten je nach Verzeichnis aggressiver sein (z.B. <code>**/__pycache__/**</code>, <code>**/target/**</code>). Aktuell minimal — Erweiterung wenn Praxis es zeigt.</li>
+  <li><strong>Sidecar-Cold-Start-Latenz</strong> (~5-10 s zum Modell-Laden) — sollten wir einen <code>--keep-warm</code>-Modus überlegen, der den Sidecar als Daemon hält? Aktuell: nein (YAGNI), aber Punkt für Phase 4 Review.</li>
+  <li><strong>Windows-Support für Sidecar</strong>: uv läuft auf Windows, GLiNER/Presidio in der Theorie auch. Manuelle Verifikation erst in Phase 5.</li>
+</ol>
+</section>
+
+<section id="verify">
+<h2><span class="num">§V</span>Phase-5 Windows-Verifikation &amp; Bug-Fixes (2026-05-13)</h2>
+
+<p>
+  Schließt den offenen Punkt 4 aus §? (<em>"Windows-Support manuelle Verifikation erst in Phase 5"</em>). Während des End-to-End-Tests auf Windows 11 (PowerShell + Git Bash, uv 0.11.7, Python 3.14.4) sind vier Bugs aufgefallen — alle im Lifecycle-Pfad, keiner in <code>.redactorignore</code> oder Path-Guard.
+</p>
+
+<h3>V.1 Bug-Übersicht</h3>
+
+<table>
+  <thead>
+    <tr><th>Bug</th><th>Symptom</th><th>Stelle</th><th>Fix</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A</strong></td>
+      <td>GLiNER-Download bricht mit <code>SyntaxError: 'unicodeescape' codec can't decode … \UXXXXXXXX</code> ab. Python interpretiert den Windows-Pfad <code>C:\Users\…</code> im inline <code>-c</code>-Skript als Unicode-Escape.</td>
+      <td><code>src/classifier_lifecycle.rs::download_gliner_model</code></td>
+      <td>Helper <code>build_gliner_script()</code> extrahiert; Pfad wird via <code>.to_string_lossy().replace('\\', "/")</code> auf Forward-Slashes normalisiert. Python akzeptiert auch auf Windows Forward-Slashes in <code>Path</code>/<code>os.path</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>A.2</strong></td>
+      <td><code>OSError: [WinError 1314] Dem Client fehlt ein erforderliches Recht</code> beim Erstellen der HF-Cache-Symlinks (<code>blobs/</code> → <code>snapshots/</code>). Tritt ohne Developer Mode / Admin auf jedem Windows-System auf.</td>
+      <td><code>src/classifier_lifecycle.rs::build_gliner_script</code> + <code>src/classify.rs::run_classifier</code> + <code>classifier-py/src/classify/analyzer.py::build_analyzer</code></td>
+      <td>Drei Änderungen koordiniert: (1) <code>snapshot_download(local_dir=…, local_dir_use_symlinks=False)</code> statt <code>cache_dir=</code> → flacher symlinkfreier Layout. (2) Neuer Helper <code>classify::gliner_model_dir()</code> als Single-Source-of-Truth für den Pfad. (3) Rust setzt env <code>REDACTOR_GLINER_PATH</code> beim Spawnen des Sidecars; Analyzer lädt via <code>GLiNER.from_pretrained(local_path)</code> falls gesetzt, Fallback auf <code>repo_id</code> (Mac/Linux Default-Pfad).</td>
+    </tr>
+    <tr>
+      <td><strong>B</strong></td>
+      <td>spaCy-Modelle landen im falschen Venv: <code>Using Python 3.14.4 environment at: C:\Users\Alice\.venv</code>. <code>spacy.util.is_package()</code> im Sidecar-Venv liefert <code>False</code>, obwohl der Subcommand <code>Download and installation successful</code> meldet.</td>
+      <td><code>src/classifier_lifecycle.rs::download_spacy_model</code></td>
+      <td>Vor dem <code>Command::spawn</code> werden <code>VIRTUAL_ENV</code> + <code>UV_PROJECT_ENVIRONMENT</code> auf das Sidecar-Venv gesetzt. uv's Environment-Discovery findet sonst das nächste <code>.venv</code> im cwd-Tree (typischerweise <code>~/.venv</code>) und installiert dort. Zusätzlich: <code>run_install</code> verifiziert nach erfolgreichem Exit, dass <code>spacy.util.is_package(model)</code> im Sidecar-Venv true ist (Defence-in-Depth).</td>
+    </tr>
+    <tr>
+      <td><strong>C</strong></td>
+      <td><code>classifier-install --quiet</code> druckt am Ende „classifier-install complete" und exited <code>0</code>, obwohl GLiNER hart gescheitert war (nur Warning auf stderr). Status zeigt danach korrekt <code>no</code> für die fehlenden Komponenten — aber die Install-CLI lügt.</td>
+      <td><code>src/classifier_lifecycle.rs::run_install</code></td>
+      <td><code>run_install</code> sammelt Failures in einem <code>Vec&lt;String&gt;</code>. Bei nicht-leerer Liste: Exit <code>3</code>, klare Summary auf stderr (<code>"classifier-install INCOMPLETE — N component(s) failed:"</code> + bullet-Liste pro Failure + Hint auf <code>classifier-status</code>).</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>V.2 Zusätzliche Schutzschicht: Empty-Dir-Check</h3>
+
+<p>
+  HuggingFace's <code>snapshot_download</code> nutzt intern einen ThreadPool. Bei Symlink-Fehlern wird die Worker-Exception per <code>concurrent.futures</code> propagiert — aber wenn der Pool sie schluckt, exited das Wrapper-Script trotzdem 0. Belt-and-Suspenders: nach erfolgreichem Exit prüft <code>download_gliner_model</code>, ob <code>local_dir</code> mindestens eine Datei enthält. Wenn nicht → harte Fehlermeldung mit „exited 0 but … is empty — likely silent failure".
+</p>
+
+<h3>V.3 Cross-Platform-Test-Cleanup</h3>
+
+<p>
+  Bonus-Fix außerhalb des Specs: <code>src/classify.rs::tests</code> hatte ungated <code>use std::os::unix::fs::PermissionsExt</code> und <code>use std::sync::Mutex</code> als globale Test-Imports. Auf Windows brach das <code>cargo test</code> mit <code>could not find 'unix' in 'os'</code>. Mit <code>#[cfg(unix)]</code> pro <code>use</code>-Statement gegated.
+</p>
+
+<h3>V.4 Neue Tests</h3>
+
+<ul>
+  <li><code>gliner_script_normalises_windows_backslashes</code> — Regression: keine <code>\</code> im Output, Forward-Slash-Pfad sichtbar.</li>
+  <li><code>gliner_script_preserves_unix_slashes</code> — Sanity-Check: Unix-Pfade werden 1:1 übernommen.</li>
+  <li><code>gliner_script_uses_local_dir_mode_without_symlinks</code> — Stellt sicher, dass nie wieder <code>cache_dir=</code> reinkommt (Symlink-Regression). Asserts: enthält <code>local_dir=</code> + <code>local_dir_use_symlinks=False</code> + nicht <code>cache_dir=</code>.</li>
+</ul>
+
+<h3>V.5 Disk-Usage-Update</h3>
+
+<div class="callout warn">
+  <h4>Disk-Footprint: ~1.9 GB statt geplant ~550 MB</h4>
+  <p>
+    Konsequenz aus dem <code>local_dir</code>-Wechsel: HuggingFace's Cache-Layout dedupliziert via Symlinks zwischen <code>blobs/</code> und <code>snapshots/</code>; ohne Symlinks dupliziert <code>local_dir</code>-Mode die Modell-Dateien physisch. Plus die uv-venv-Größe (torch CPU ~ 1.0 GB) summiert sich zu ~1.9 GB. Aktuell akzeptiert — <code>APPROX_DISK_USAGE_MB</code>-Konstante in der CLI sollte in einem Follow-Up auf <code>1900</code> erhöht werden, ebenso die Spec-Angabe in §5.3.
+  </p>
+</div>
+
+<h3>V.6 Test-Ergebnis nach Fixes</h3>
+
+<table>
+  <thead><tr><th>Komponente</th><th>Vorher</th><th>Nachher</th></tr></thead>
+  <tbody>
+    <tr><td><code>uv --version</code></td><td>0.11.7 ✓</td><td>0.11.7 ✓</td></tr>
+    <tr><td><code>redactor --version</code></td><td>0.7.0 ✓</td><td>0.7.0 ✓</td></tr>
+    <tr><td>Sidecar-venv</td><td>installiert ✓</td><td>installiert ✓</td></tr>
+    <tr><td>GLiNER weights</td><td><span class="tag tag-deny">FEHLT</span> (SyntaxError, dann Symlink-Fehler)</td><td><span class="tag tag-ok">OK</span> 4 files, lokal in <code>&lt;config&gt;/classifier/models/gliner/</code></td></tr>
+    <tr><td>spaCy <code>de_core_news_sm</code></td><td><span class="tag tag-deny">FEHLT</span> (in <code>~/.venv</code> gelandet)</td><td><span class="tag tag-ok">OK</span> im Sidecar-venv</td></tr>
+    <tr><td>spaCy <code>en_core_web_sm</code></td><td><span class="tag tag-deny">FEHLT</span></td><td><span class="tag tag-ok">OK</span></td></tr>
+    <tr><td><code>classifier-install</code> Exit</td><td>0 (trotz Failures!)</td><td>0 ✓ wenn alles ok / 3 wenn Failures</td></tr>
+    <tr><td><code>classify-files</code> E2E</td><td>nie getestet</td><td><span class="tag tag-ok">OK</span> deutsche Steuernummer als <code>TAX_DOC</code> Conf. 0.95</td></tr>
+    <tr><td>Rust-Tests</td><td>248 grün</td><td>251 grün (3 neue GLiNER-Script-Tests)</td></tr>
+    <tr><td>Python-Tests</td><td>52 grün</td><td>52 grün</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="manual">
+<h2><span class="num">§M</span>Manueller Lifecycle-Test (Step-by-Step)</h2>
+
+<p>
+  Vollständiger End-to-End-Smoketest: <strong>install → status → classify-files → merge → uninstall</strong>. Alle Schritte cross-platform; in strict-mode-Projekten muss jedem Bash-Aufruf <code>redactor wrap --</code> vorangestellt werden (siehe Hinweise pro Block).
+</p>
+
+<div class="callout">
+  <h4>Strict-Mode-Hinweis</h4>
+  <p>Wenn dieses Repo / Projekt redactor-Hooks aktiv hat (<code>.claude/settings.json</code> mit <code>bash-strict</code>), jeden <code>$ &lt;cmd&gt;</code>-Block unten als <code>$ redactor wrap -- &lt;cmd&gt;</code> ausführen. Beispiel: <code>redactor wrap -- redactor classifier-install --quiet</code>. Sonst direkt.</p>
+</div>
+
+<h3>M.1 Prerequisites prüfen</h3>
+
+<pre><code># uv muss installiert + auf PATH sein (kein pip-Fallback)
+uv --version
+# → uv 0.11+ erwartet (Windows: winget install --id astral-sh.uv)
+
+# Redactor muss 0.7.0+ sein
+redactor --version
+# → redactor 0.7.0
+
+# Aktueller Classifier-Stand (sollte "no" überall sein, frischer Start)
+redactor classifier-status</code></pre>
+
+<h3>M.2 Installation</h3>
+
+<pre><code># Installiert venv + ML-Deps + Models. Dauer: ~3-10 min je nach Netz.
+# --quiet überspringt den Disk-Confirm-Prompt.
+redactor classifier-install --quiet
+
+# Erwartete Ausgabe am Ende:
+#   redactor: classifier-install complete (C:\Users\…\AppData\Roaming\redactor\classifier)
+#
+# Bei Fehler:
+#   redactor: classifier-install INCOMPLETE — N component(s) failed:
+#     - GLiNER model 'urchade/gliner_multi_pii-v1': &lt;reason&gt;
+#     - spaCy model 'de_core_news_sm': &lt;reason&gt;
+#   redactor: run `redactor classifier-status` for current state, …
+#   Exit: 3</code></pre>
+
+<h3>M.3 Install-Status verifizieren</h3>
+
+<pre><code>redactor classifier-status
+
+# Erwartet (alle vier "yes"):
+#   classifier status:
+#     installed         yes
+#     classifier_dir    C:\Users\…\AppData\Roaming\redactor\classifier
+#     python_path       …\venv\Scripts\python.exe
+#     python_version    Python 3.14.4   (oder 3.10-3.13 auf älteren Systemen)
+#     torch_version     2.11.0+cpu
+#     gliner_model      yes
+#     spacy[de_core_news_sm]   yes
+#     spacy[en_core_web_sm]   yes
+#     disk_usage        ~1900 MB (Windows) / ~550 MB (Linux/Mac)
+
+# JSON-Format für Automation:
+redactor classifier-status --format json</code></pre>
+
+<h3>M.4 Test-Ordner mit Fixture-Dateien</h3>
+
+<pre><code># Linux/Mac/Git-Bash:
+TEST=/tmp/redactor-smoketest
+mkdir -p "$TEST"
+
+# Datei 1 — Steuerdokument (sollte erkannt werden)
+cat &gt; "$TEST/steuer-2024.txt" &lt;&lt;'EOF'
+Einkommensteuererklärung 2024
+Finanzamt Berlin-Mitte
+Steuernummer: 12/345/67890
+Identifikationsnummer: 12 345 678 901
+Einkünfte aus nichtselbstständiger Arbeit: 65000 EUR
+EOF
+
+# Datei 2 — Personalakte (sollte erkannt werden)
+cat &gt; "$TEST/personalakte.txt" &lt;&lt;'EOF'
+Personalnummer: 4711
+Mitarbeiter: Max Mustermann
+Gehalt: 5000 EUR brutto
+Geburtsdatum: 15.03.1985
+Adresse: Musterstraße 12, 10115 Berlin
+EOF
+
+# Datei 3 — Normaler Text (sollte NICHT erkannt werden)
+cat &gt; "$TEST/notes.txt" &lt;&lt;'EOF'
+Heute schönes Wetter, Mittagessen war lecker.
+Morgen Meeting um 10:00 Uhr. Folien vorbereiten.
+EOF
+
+# Datei 4 — Crypto-Backup (sollte pre-filtered + skipped werden, NICHT an Sidecar)
+echo "binary keepass placeholder" &gt; "$TEST/passwords.kdbx"
+
+ls -la "$TEST"</code></pre>
+
+<pre><code># Windows PowerShell (alternativ):
+$TEST = "$env:TEMP\redactor-smoketest"
+New-Item -ItemType Directory -Force -Path $TEST
+"Einkommensteuererklärung 2024`nFinanzamt Berlin`nSteuernummer: 12/345/67890" |
+    Set-Content -Encoding UTF8 "$TEST\steuer-2024.txt"
+"Personalnummer: 4711`nMitarbeiter: Max Mustermann`nGehalt: 5000 EUR" |
+    Set-Content -Encoding UTF8 "$TEST\personalakte.txt"
+"Heute schönes Wetter, Mittagessen lecker." |
+    Set-Content -Encoding UTF8 "$TEST\notes.txt"
+Get-ChildItem $TEST</code></pre>
+
+<h3>M.5 Classifier laufen lassen</h3>
+
+<pre><code># Default (Text-Output, Threshold 0.6, schreibt nach ~/.redactorignore.suggested)
+redactor classify-files "$TEST"
+
+# Mit niedrigerem Threshold (sieht mehr) + custom Output-Pfad
+redactor classify-files "$TEST" \
+    --threshold 0.3 \
+    --output "$TEST/out.suggested"
+
+# JSON-Format für agent-pipelines
+redactor classify-files "$TEST" \
+    --threshold 0.3 \
+    --format json \
+    --output "$TEST/out.suggested.json"
+
+# YAML-Format
+redactor classify-files "$TEST" \
+    --threshold 0.3 \
+    --format yaml \
+    --output "$TEST/out.suggested.yaml"
+
+# Mit max-file-size und max-depth eingrenzen (für große Trees)
+redactor classify-files ~/Documents \
+    --threshold 0.6 \
+    --max-depth 3 \
+    --max-file-size 10MB \
+    --output ~/.redactorignore.suggested</code></pre>
+
+<h3>M.6 Output prüfen</h3>
+
+<pre><code>cat "$TEST/out.suggested"
+
+# Erwartete Form (Threshold 0.3):
+#
+# # redactor classify-files — suggestions
+# # generated: 2026-05-13T…
+# # input:     /tmp/redactor-smoketest
+# # files:     3 scanned, 2 above threshold      ← .kdbx wurde pre-filtered
+# # threshold: 0.30
+#
+# # confidence=0.80  labels=TAX_DOC
+# # evidence="Detected '12/345/67890' (TAX_DOC, score=0.95)"
+# /tmp/redactor-smoketest/steuer-2024.txt
+#
+# # confidence=0.72  labels=PERSONAL_RECORD,EMPLOYEE_RECORD
+# # evidence="Detected 'Max Mustermann' (PERSON_NAME, score=0.91), …"
+# /tmp/redactor-smoketest/personalakte.txt
+
+# Sanity-Check: notes.txt darf NICHT drinstehen (unter Threshold)
+grep -q "notes.txt" "$TEST/out.suggested" && echo "BUG: notes leaked" || echo "OK: notes filtered"
+
+# Sanity-Check: passwords.kdbx darf NICHT drinstehen (pre-filtered)
+grep -q "passwords.kdbx" "$TEST/out.suggested" && echo "BUG: kdbx sent to sidecar" || echo "OK: crypto pre-filtered"</code></pre>
+
+<h3>M.7 Merge in <code>~/.redactorignore</code></h3>
+
+<pre><code># Dry-run zuerst — zeigt was passieren würde, schreibt nichts
+redactor classify-merge "$TEST/out.suggested" --dry-run
+
+# Interaktiv: y/n/s(skip rest)/q pro Vorschlag
+redactor classify-merge "$TEST/out.suggested"
+
+# Non-interaktiv: alle Vorschläge übernehmen (vertraut der ML)
+redactor classify-merge "$TEST/out.suggested" --yes
+
+# Resultat: ~/.redactorignore wird angehängt mit den akzeptierten Pfaden
+cat ~/.redactorignore | tail -20</code></pre>
+
+<h3>M.8 Hook-Verifikation (Bonus)</h3>
+
+<pre><code># Verifiziere, dass die neu hinzugefügten Pfade jetzt vom Path-Guard
+# geblockt werden. (Setzt voraus, dass die Hooks im aktuellen Projekt aktiv sind.)
+
+# Sollte blockiert sein:
+redactor wrap -- cat "$TEST/steuer-2024.txt"
+# → "redactor: path is on the user's .redactorignore list: …"
+
+# Crypto-Container hard-blocked, auch ohne .redactorignore-Eintrag:
+redactor wrap -- cat "$TEST/passwords.kdbx"
+# → "redactor: path is an encrypted/crypto container: …"</code></pre>
+
+<h3>M.9 Update (Phase-5-Placeholder)</h3>
+
+<pre><code># Aktuell als Hint implementiert — empfiehlt uninstall + install
+redactor classifier-update
+# → "classifier-update is a Phase-5 deliverable. For now, run
+#    `redactor classifier-uninstall --yes && redactor classifier-install` …"</code></pre>
+
+<h3>M.10 Cleanup</h3>
+
+<pre><code># Entfernt &lt;config&gt;/classifier/ rekursiv (~1.9 GB)
+redactor classifier-uninstall --yes
+
+# Verifikation
+redactor classifier-status
+# → installed: no
+#   gliner_model: no
+#   spacy[…]: no
+#   disk_usage: 0.0 MB
+
+# Test-Fixtures aufräumen
+rm -rf "$TEST"</code></pre>
+
+<h3>M.11 Erwartete Latenz (M4 / Apple Silicon)</h3>
+
+<table>
+  <thead><tr><th>Operation</th><th>Erwartung</th></tr></thead>
+  <tbody>
+    <tr><td>Erstinstallation (kalt, mit Download)</td><td>3-10 min (netzabhängig)</td></tr>
+    <tr><td>Sidecar-Cold-Start (1. <code>classify-files</code>-Call)</td><td>5-10 s (Modell-Laden)</td></tr>
+    <tr><td>Pro File (nach Warm-up, ~4 KB preview)</td><td>~100-300 ms</td></tr>
+    <tr><td>100 Files Verzeichnis</td><td>≤ 30 s (Akzeptanzkriterium Phase 4)</td></tr>
+    <tr><td><code>classifier-status</code></td><td>~200 ms (spawn python + import spacy)</td></tr>
+    <tr><td><code>classifier-uninstall</code></td><td>3-10 s (~2 GB recursive delete)</td></tr>
+  </tbody>
+</table>
+</section>
+
+<hr class="section-end">
+
+<div class="footer-meta">
+  <p>
+    <strong>Datei:</strong> <code>knowledge/plans/2026-05-12-redactorignore-and-classifier-design.html</code><br>
+    <strong>Brainstorming-Quelle:</strong> Session vom 2026-05-12 mit Claude Opus 4.7 (1M context). Skill <code>superpowers:brainstorming</code>.<br>
+    <strong>Verifiziert:</strong> 2026-05-13 auf Windows 11 (uv 0.11.7, Python 3.14.4, redactor 0.7.0). 4 Bugs gefixt, dokumentiert in §V. Lifecycle-Test §M durchgespielt — alle Komponenten grün.<br>
+    <strong>Next step:</strong> Disk-Usage-Konstante (<code>APPROX_DISK_USAGE_MB</code> + Spec §5.3) auf 1900 anheben; manuelle Test-Szenarien aus §7.3 systematisch durchspielen (5 GB <code>~/Documents</code> + Write-Guard-Edge-Cases).
+  </p>
+</div>
+
+</main>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    themeVariables: {
+      fontFamily: 'JetBrains Mono, SF Mono, Menlo, monospace',
+      fontSize: '13px',
+      primaryColor: '#fbfbfa',
+      primaryTextColor: '#1c1c1c',
+      primaryBorderColor: '#1c1c1c',
+      lineColor: '#5a5a5a',
+      secondaryColor: '#f4e9dc',
+      tertiaryColor: '#ffffff'
+    },
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence:  { useMaxWidth: true, showSequenceNumbers: false }
+  });
+</script>
+</body>
+</html>

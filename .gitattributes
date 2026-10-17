@@ -1,0 +1,9 @@
+# Hooks template files must keep LF line endings — they're consumed by
+# bash/sh in Linux dev containers and on macOS. Without this, autocrlf on
+# Windows clones would write CRLF and bash would error with
+# "bad interpreter: /usr/bin/env\r: No such file or directory".
+hooks-template/**/*.sh          text eol=lf
+hooks-template/**/VERSION       text eol=lf
+hooks-template/**/settings.json text eol=lf
+examples/**/*.sh                text eol=lf
+scripts/*.sh                    text eol=lf

@@ -1,0 +1,101 @@
+{
+  "_version": "0.5.0",
+  "_changes": [
+    "0.5.0: + PreToolUse Edit|MultiEdit|Write matcher (pre-edit) — primary purpose is blocking Write from creating new files at protected paths (~/.redactorignore self-protect, crypto containers, .env-family). Edit/MultiEdit are belt-and-suspenders since Read-block already covers them indirectly. + v0.7 [allow] section short-circuit in pre-bash/pre-read (overrides .redactorignore paths + office-doc defaults; cannot override unblockable categories).",
+    "0.4.2: extended hook coverage (rred-36). PowerShell folded into pre-bash matcher (Bash|PowerShell) so Windows/pwsh has the same strict-prefix + path-guard + struct-file rules. Three new fixed-deny matchers: mcp__.* (high-density PII, no per-server redaction), Grep (bypasses Read+path-guard via matching lines — redirect to `redactor wrap -- rg/grep` via Bash), NotebookEdit (not used in this profile). Monitor intentionally NOT hooked.",
+    "0.4.1: removed PostToolUse Read|Bash sanitizer (post-tool). pre-bash's struct-file guard already forces structured outputs through `redactor --type X <file>` (direct mode, sanitizes before stdout). For non-structured streams, `redactor wrap` runs pattern-mode at wrap-time. Tradeoff: no second-pass safety net for long-running wraps if rules change mid-stream.",
+    "0.4.0: + network-guard (rred-18), + post-write lint (rred-19), + session-start slot (rred-20)",
+    "0.3.0: hooks moved into the redactor binary"
+  ],
+  "_comment": "Strict-redaction hook config. All hooks are served by the redactor binary.",
+  "_hook_design": "Pre-tool: path-guard + bash-strict + network-guard (Bash|PowerShell), read-strict (Read), fixed-deny (mcp__.*, Grep, NotebookEdit). Post-tool: per-extension Write/Edit validators only.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-read"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|MultiEdit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-edit"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook deny-grep"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook deny-notebook"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook deny-mcp"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook post-write"
+          }
+        ]
+      }
+    ]
+  }
+}

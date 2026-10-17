@@ -1,0 +1,122 @@
+name: rolling-release
+
+# Builds prebuilt redactor binaries on every push to main and publishes them
+# to a single rolling pre-release tagged "rolling". The plugin's
+# /redactor:install pulls version-less assets from this release, so the
+# download URLs stay stable across pushes:
+#   https://github.com/niclasedge/rust-redactor/releases/download/rolling/redactor-<target>.tar.gz
+#
+# Versioned, immutable releases are still produced by release.yml on `v*` tags.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Serialize publishes so back-to-back pushes can't interleave the
+# delete-then-recreate of the rolling tag.
+concurrency:
+  group: rolling-release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package archive (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -C "target/${{ matrix.target }}/release" -czf \
+            "dist/redactor-${{ matrix.target }}.tar.gz" redactor
+
+      - name: Package archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Compress-Archive -Path "target/${{ matrix.target }}/release/redactor.exe" `
+            -DestinationPath "dist/redactor-${{ matrix.target }}.zip" -Force
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-${{ matrix.target }}
+          path: dist/redactor-${{ matrix.target }}.${{ matrix.ext }}
+
+  publish:
+    name: Publish rolling release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: rolling-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum redactor-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Delete previous rolling release + tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release delete rolling --yes --cleanup-tag || true
+
+      - name: Publish rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: rolling
+          target_commitish: ${{ github.sha }}
+          name: Rolling build (latest main)
+          body: |
+            Auto-generated prebuilt binaries for the latest commit on `main`
+            (`${{ github.sha }}`). Pulled by the redactor Claude Code plugin's
+            `/redactor:install`. For pinned, immutable releases use a `v*` tag.
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/redactor-*.tar.gz
+            dist/redactor-*.zip
+            dist/SHA256SUMS.txt

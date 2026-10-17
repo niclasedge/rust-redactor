@@ -1,0 +1,77 @@
+{
+  "_version": "0.4.2-codex",
+  "_changes": [
+    "0.4.2-codex: mirrors the strict Claude profile for Codex project-local hooks. Adds PreToolUse coverage for Bash, apply_patch/Edit/Write, and mcp__.*; keeps prompt scan, session-start, and post-write validation."
+  ],
+  "_comment": "Strict-redaction hook config for Codex. Requires [features].codex_hooks = true in .codex/config.toml and `redactor` on PATH.",
+  "_hook_design": "Pre-tool: bash strict/path/network guard (Bash), patch path-guard (apply_patch/Edit/Write), fixed-deny (mcp__.*). Post-tool: per-extension write validators for apply_patch/Edit/Write only.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook session-start",
+            "statusMessage": "recording strict-redaction session start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook prompt",
+            "statusMessage": "scanning prompt for accidental secrets"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-bash",
+            "statusMessage": "checking bash command against redactor policy"
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-patch",
+            "statusMessage": "checking patch targets for sensitive paths"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook deny-mcp",
+            "statusMessage": "blocking MCP tools in strict-redaction mode"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook post-write",
+            "statusMessage": "validating edited JSON/TOML files"
+          }
+        ]
+      }
+    ]
+  }
+}

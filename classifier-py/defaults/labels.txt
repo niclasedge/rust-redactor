@@ -1,0 +1,39 @@
+# <config>/classifier/labels.txt
+#
+# Default classifier label set (spec §5.4). One label per line; lines
+# starting with `#` are ignored. The sidecar's GLiNER model is prompted
+# with this set on every classify-files run — add domain-specific labels
+# (CONTRACT, NDA, ...) below the defaults.
+#
+# Phase 6b: the label set is split into TWO sections.
+#
+#   1. Document-type labels → produce path-suggestions (~/.redactorignore.suggested)
+#   2. Entity-type labels    → produce keyword-suggestions (~/.redactorignore.keywords.suggested)
+#
+# The split is purely organizational; GLiNER receives the union.
+
+# === Document-Type Labels (Pfad-Vorschlag, File-Confidence) ===
+TAX_DOC
+BANK_STATEMENT
+PERSONAL_RECORD
+CREDENTIAL
+PRIVATE_KEY
+MEDICAL_RECORD
+LEGAL_DOC
+PASSWORD_VAULT
+CUSTOMER_DATA
+EMPLOYEE_RECORD
+
+# === Entity-Type Labels (Keyword-Vorschläge, Phase 6b) ===
+# These contribute to the keyword stream rather than the file-confidence
+# aggregation. Personenbezogene Daten und kontext-sensitive Secrets, die
+# als Keyword global wirken sollen.
+PERSON
+ORGANIZATION
+LOCATION
+URL
+EMAIL
+HOSTNAME
+PASSWORD
+SECRET
+API_KEY

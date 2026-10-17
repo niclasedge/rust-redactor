@@ -1,0 +1,25 @@
+/target
+/logs
+*.swp
+.DS_Store
+
+# Python sidecar build artifacts
+classifier-py/.venv/
+classifier-py/**/__pycache__/
+classifier-py/.pytest_cache/
+classifier-py/.ruff_cache/
+classifier-py/*.egg-info/
+
+# Claude Code transient and machine-local state
+.claude/worktrees/
+.claude/settings.local.json
+
+# Local benchmark runs (logs/suggestions contain data from real corpora)
+/bench/
+
+# Local keyword mappings (customer names etc.)
+scripts/customer-abbreviations.json
+
+# Plugin-local binary fetched by /redactor:install (never commit binaries)
+/bin/redactor
+/bin/redactor.exe

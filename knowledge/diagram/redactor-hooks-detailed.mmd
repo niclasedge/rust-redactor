@@ -1,0 +1,173 @@
+flowchart LR
+    %% ════════════════════════════════════════════════════════════
+    %% USER ACTIONS — eine Box pro Tool-Variante
+    %% ════════════════════════════════════════════════════════════
+    subgraph UA["USER / CLAUDE — Tool-Aufrufe (jede Variante einzeln)"]
+        direction TB
+        u_prompt_clean["Prompt sauber"]
+        u_prompt_secret["Prompt mit secret<br/>(sk-…/AKIA/IBAN…)"]
+        u_read_any["Read tool<br/>egal welcher Pfad"]
+        u_bash_bare["Bash: cat foo.json<br/>(bare command)"]
+        u_wrap_log["Bash: redactor wrap -- cat foo.log<br/>(non-struct ext)"]
+        u_wrap_csv["Bash: redactor wrap -- head -20 foo.csv<br/>(struct ext im wrap)"]
+        u_direct_json["Bash: redactor --type json foo.json"]
+        u_direct_csv["Bash: redactor --type csv foo.csv"]
+        u_direct_env["Bash: redactor --type env foo.env"]
+        u_direct_auto["Bash: redactor foo.csv<br/>(auto-mode → csv)"]
+        u_bug_pattern["⚠ Bash: redactor -t pattern foo.csv<br/>(force pattern auf struct file)"]:::bug
+        u_bug_nodef["⚠ Bash: redactor -t pattern --no-defaults<br/>--no-config --keywords ZZZ foo.csv"]:::bug
+        u_write["Write / Edit"]
+    end
+
+    %% ════════════════════════════════════════════════════════════
+    %% SETTINGS.JSON
+    %% ════════════════════════════════════════════════════════════
+    cc[".claude/settings.json<br/>jeder Slot ruft redactor hook"]:::cfg
+
+    %% ════════════════════════════════════════════════════════════
+    %% HOOK FILTER STAGES — jeder Filter als eigener Knoten
+    %% ════════════════════════════════════════════════════════════
+    subgraph HOOK_PROMPT["Stage A: prompt-route"]
+        f_prompt_scan["A1 scan stdin gegen Pattern-Engine<br/>match → block · clean → allow"]
+    end
+
+    subgraph HOOK_PRE_BASH["Stage B: pre-bash route"]
+        direction TB
+        f_path_b["B1 path-guard<br/>regex auf command-string<br/>(.env / id_rsa / .pem / .key /<br/>.aws/credentials / /secrets/)"]
+        f_strict_b["B2 bash-strict<br/>command muss mit redactor beginnen<br/>⚠ prüft KEINE flags"]:::partial
+        f_struct["B3 struct-file enforce<br/>blockt wrap+cmd wenn<br/>.json/.csv/.env in command"]
+        f_net["B4 network-guard (Phase 4)<br/>URL-Whitelist gegen<br/>.redactor-urls.json"]
+    end
+
+    subgraph HOOK_PRE_READ["Stage C: pre-read route"]
+        f_path_r["C1 path-guard<br/>identisch zu B1"]
+        f_read_strict["C2 read-strict<br/>blockt JEDEN Read-Aufruf"]
+    end
+
+    subgraph HOOK_POST["Stage D: post-tool route (Read|Bash)"]
+        direction TB
+        f_post_skip["D1 skip if<br/>command startet mit<br/>redactor (außer wrap)"]
+        f_post_mode["D2 detect mode aus command<br/>(.json → json, .csv → csv,<br/>.env → env, sonst pattern)"]
+        f_post_run["D3 redactor stdout neu redacten<br/>im erkannten mode"]
+        f_post_diff["D4 wenn redacted ≠ raw<br/>→ block + sanitized reason"]
+    end
+
+    subgraph HOOK_POST_W["Stage E: post-write route (Phase 4)"]
+        f_lint["E1 lint/syntax<br/>ruff (.py) / json / yaml /<br/>block on error"]
+    end
+
+    %% ════════════════════════════════════════════════════════════
+    %% REDACTOR BINARY — internal modes
+    %% ════════════════════════════════════════════════════════════
+    subgraph MODES["redactor binary — Modi"]
+        direction TB
+        m_pattern["pattern (default)<br/>regex: API-Keys, IBAN, Telefon,<br/>Connection-Strings, Azure-GUIDs<br/>≠ struct → kein Schutz wenn keine Inline-Secrets"]
+        m_json["json (structural)<br/>alle Leaf-Values → &lt;redacted&gt;<br/>Listen: erstes Item + N more"]
+        m_csv["csv (structural)<br/>Header verbatim<br/>Zeile 1 → &lt;redacted&gt;<br/>Rest dropped"]
+        m_env["env (structural)<br/>KEY=&lt;redacted&gt;<br/>Kommentare bleiben"]
+        m_auto["auto (default für FILE arg)<br/>wählt Mode by extension"]
+    end
+
+    %% ════════════════════════════════════════════════════════════
+    %% OUTCOMES
+    %% ════════════════════════════════════════════════════════════
+    subgraph OUT["OUTCOME"]
+        direction TB
+        o_block_prompt["🛑 BLOCK<br/>prompt secret + redacted preview"]:::block
+        o_block_path["🛑 BLOCK<br/>sensitive path"]:::block
+        o_block_read["🛑 BLOCK<br/>read disabled"]:::block
+        o_block_bare["🛑 BLOCK<br/>bare bash → use redactor wrap"]:::block
+        o_block_struct["🛑 BLOCK<br/>wrap+cmd auf struct file →<br/>use --type"]:::block
+        o_block_url["🛑 BLOCK<br/>URL nicht in Whitelist"]:::block
+        o_block_lint["🛑 BLOCK<br/>lint/syntax error"]:::block
+        o_san_struct["🟧 SANITIZED structural<br/>(UI + Model identisch)"]:::san
+        o_san_pattern["🟧 SANITIZED pattern<br/>(secrets → &lt;redacted:LABEL&gt;)"]:::san
+        o_allow["✅ ALLOW"]:::allow
+        o_leak["💥 DATA LEAK<br/>kompletter struct-content<br/>im UI + Model-Context"]:::leak
+    end
+
+    %% ════════════════════════════════════════════════════════════
+    %% EDGES — User → settings.json → Routes → Filter → Outcome
+    %% ════════════════════════════════════════════════════════════
+
+    %% Prompt route
+    u_prompt_clean --> cc
+    u_prompt_secret --> cc
+    cc --> f_prompt_scan
+    f_prompt_scan --> o_block_prompt
+    f_prompt_scan --> o_allow
+
+    %% Read route
+    u_read_any --> cc
+    cc --> f_path_r
+    f_path_r --> o_block_path
+    f_path_r --> f_read_strict
+    f_read_strict --> o_block_read
+
+    %% Bash route — alle Varianten gehen durch path-guard + bash-strict
+    u_bash_bare --> cc
+    u_wrap_log --> cc
+    u_wrap_csv --> cc
+    u_direct_json --> cc
+    u_direct_csv --> cc
+    u_direct_env --> cc
+    u_direct_auto --> cc
+    u_bug_pattern --> cc
+    u_bug_nodef --> cc
+
+    cc --> f_path_b
+    f_path_b --> o_block_path
+    f_path_b --> f_strict_b
+    f_strict_b --> o_block_bare
+    f_strict_b --> f_struct
+    f_struct --> o_block_struct
+    f_struct --> f_net
+    f_net --> o_block_url
+    f_net --> f_post_skip
+
+    %% post-tool stage
+    f_post_skip --> o_san_struct
+    f_post_skip --> f_post_mode
+    f_post_mode --> f_post_run
+    f_post_run --> f_post_diff
+    f_post_diff --> o_san_pattern
+    f_post_diff --> o_allow
+
+    %% Bug paths — direct redactor call mit force-pattern oder no-defaults
+    u_bug_pattern -.->|"⚠ flag-check fehlt"| f_strict_b
+    u_bug_nodef -.->|"⚠ flag-check fehlt"| f_strict_b
+    u_bug_pattern -.->|"⚠ pattern auf csv<br/>findet keine secrets<br/>→ output unredacted"| m_pattern
+    u_bug_nodef -.->|"⚠ alle Regeln deaktiviert<br/>→ output 1:1"| m_pattern
+    m_pattern -.->|"💥"| o_leak
+
+    %% Healthy direct paths
+    u_direct_json --> m_json
+    u_direct_csv --> m_csv
+    u_direct_env --> m_env
+    u_direct_auto --> m_auto
+    m_auto --> m_csv
+    m_json --> o_san_struct
+    m_csv --> o_san_struct
+    m_env --> o_san_struct
+
+    %% wrap+log → pattern only
+    u_wrap_log --> m_pattern
+    m_pattern --> o_san_pattern
+    m_pattern --> o_allow
+
+    %% Write/Edit route
+    u_write --> cc
+    cc --> f_lint
+    f_lint --> o_block_lint
+    f_lint --> o_allow
+
+    %% ════════════════════════════════════════════════════════════
+    %% Styling
+    %% ════════════════════════════════════════════════════════════
+    classDef cfg fill:#fff8d6,stroke:#a8893a,color:#000
+    classDef bug fill:#ffd0d0,stroke:#aa0000,color:#000
+    classDef partial fill:#fff4cc,stroke:#b89234,color:#000
+    classDef block fill:#ffd6d6,stroke:#cc4040,color:#000
+    classDef san fill:#ffe4b8,stroke:#cc8a3d,color:#000
+    classDef allow fill:#d6f5d6,stroke:#3a8b3a,color:#000
+    classDef leak fill:#ff8080,stroke:#aa0000,color:#000

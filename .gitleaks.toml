@@ -1,0 +1,21 @@
+# gitleaks config for rust-redactor.
+#
+# This repository is a secret redactor. Its tests, docs and smoke recipes
+# contain deliberately fake credentials (sequential "abcdef...123456" strings,
+# AWS' documented EXAMPLE key, the jwt.io sample token, a dummy PEM body) to
+# prove the redaction rules fire. They are not real. Real secrets must never
+# be added to these files; any finding elsewhere is still reported.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake credentials used as redaction-rule fixtures"
+condition = "OR"
+paths = [
+  '''^src/(patterns|redactor|redact_markdown|classify_cmd)\.rs$''',
+  '''^tests/(integration|red_team|eu_pii_patterns|project_config)\.rs$''',
+  '''^tests/fixtures/''',
+  '''^docs/reference\.md$''',
+  '''^justfile$''',
+]

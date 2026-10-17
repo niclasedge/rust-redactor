@@ -1,0 +1,26 @@
+{
+  "_comment": "Claude Code hook config snippet. Merge into ~/.claude/settings.json or .claude/settings.json.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "tee /tmp/redactor-input.json >/dev/null && cat /tmp/redactor-input.json | jq -r '.tool_response.stdout // .tool_response.content // .tool_response.text // empty' | redactor --source-label \"$(jq -r '\"\\(.tool_name) \\(.tool_input.file_path // .tool_input.command // \"\")\"' /tmp/redactor-input.json)\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.prompt' | redactor --no-log"
+          }
+        ]
+      }
+    ]
+  }
+}

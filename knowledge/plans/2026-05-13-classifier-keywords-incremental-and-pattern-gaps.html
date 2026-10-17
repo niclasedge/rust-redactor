@@ -1,0 +1,1372 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Design Spec — Classifier Keywords + Incremental Scan + Pattern Gaps</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --fg: #1c1c1c;
+    --fg-dim: #5a5a5a;
+    --accent: #1f6feb;
+    --accent-soft: #dbeafe;
+    --rule: #e1e1de;
+    --code-bg: #f1f1ee;
+    --code-border: #d8d8d4;
+    --ok: #2f7d32;
+    --warn: #a86700;
+    --deny: #9b2d1f;
+    --muted: #8a8a87;
+    --section-bg: #ffffff;
+    --table-header: #efefec;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    line-height: 1.55;
+    font-size: 15.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 56px 36px 96px; }
+  header.doc-header {
+    border-bottom: 2px solid var(--fg);
+    padding-bottom: 24px;
+    margin-bottom: 40px;
+  }
+  header.doc-header .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11.5px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  header.doc-header h1 {
+    font-size: 32px;
+    line-height: 1.15;
+    margin: 0 0 14px;
+    letter-spacing: -0.01em;
+  }
+  header.doc-header .meta {
+    font-size: 13px;
+    color: var(--fg-dim);
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+  }
+  header.doc-header .meta span strong {
+    color: var(--fg);
+    font-weight: 600;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 56px 0 6px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    letter-spacing: -0.005em;
+  }
+  h2 .num {
+    color: var(--accent);
+    font-weight: 600;
+    margin-right: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  h3 { font-size: 17px; margin: 28px 0 4px; }
+  h4 {
+    font-size: 14.5px;
+    margin: 18px 0 4px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  p { margin: 8px 0 14px; }
+  ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+  li { margin: 4px 0; }
+  code {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 3px;
+    padding: 1px 5px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 5px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+    margin: 14px 0;
+  }
+  pre code { background: transparent; border: 0; padding: 0; font-size: inherit; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; margin: 14px 0 20px; }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    background: var(--table-header);
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 2px solid var(--fg);
+  }
+  blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-soft);
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 8px;
+    border-radius: 99px;
+    margin-right: 6px;
+  }
+  .tag-new { background: #dfe8db; color: #2f5d24; }
+  .tag-mod { background: #f4e7c6; color: #6f5300; }
+  .tag-deny { background: #f3d5cf; color: var(--deny); }
+  .tag-ok { background: #d4ecd6; color: var(--ok); }
+  .tag-warn { background: #f4e0bf; color: var(--warn); }
+  .tag-bug { background: #fbd6cf; color: #8a2410; }
+  .callout {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    background: var(--section-bg);
+  }
+  .callout.tradeoff { border-left: 4px solid var(--accent); }
+  .callout.warn { border-left: 4px solid var(--warn); background: #fcf3e1; }
+  .callout.danger { border-left: 4px solid var(--deny); background: #fbe7e3; }
+  .callout.ok { border-left: 4px solid var(--ok); background: #e9f5e8; }
+  .callout h4 { margin-top: 0; color: var(--fg); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0; }
+  .mermaid {
+    background: #ffffff;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px;
+    margin: 18px 0;
+    text-align: center;
+    overflow-x: auto;
+  }
+  nav.toc {
+    background: var(--section-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px 22px;
+    margin-bottom: 40px;
+  }
+  nav.toc h4 { margin-top: 0; }
+  nav.toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 28px; }
+  nav.toc li { break-inside: avoid; margin: 2px 0; }
+  nav.toc a { color: var(--fg); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); text-decoration: underline; }
+  .phase {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 14px 0;
+    background: var(--section-bg);
+  }
+  .phase-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .phase-no { font-weight: 700; color: var(--accent); font-size: 14px; }
+  .phase-title { font-weight: 600; font-size: 16px; }
+  .phase-size { margin-left: auto; font-size: 12px; color: var(--fg-dim); }
+  hr.section-end { border: 0; border-top: 1px dashed var(--rule); margin: 36px 0 8px; }
+  .footer-meta {
+    margin-top: 60px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+    color: var(--fg-dim);
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="doc-header">
+  <div class="eyebrow">Design Spec · Phase 6 + Phase 7 · Folge-Spec zu v0.7</div>
+  <h1>Classifier-Keywords, Incremental Scan &amp; Pattern-Gaps</h1>
+  <div class="meta">
+    <span><strong>Datum:</strong> 2026-05-13</span>
+    <span><strong>Projekt:</strong> rust-redactor</span>
+    <span><strong>Status:</strong> Draft — pending user review</span>
+    <span><strong>Vorgänger:</strong> <code>2026-05-12-redactorignore-and-classifier-design.html</code></span>
+    <span><strong>Trigger:</strong> Echter Einsatz auf Windows + drei beobachtete Pattern-Gaps</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h4>Inhalt</h4>
+  <ol>
+    <li><a href="#motivation">§0 Motivation &amp; Zielbild</a></li>
+    <li><a href="#findings">§1 Befunde aus echtem Einsatz</a></li>
+    <li><a href="#phase6">§2 Phase 6 — Hybrid-Output &amp; Inkrementalität</a></li>
+    <li><a href="#format">§3 Format-Diskussion: JSON vs. gitignore-style</a></li>
+    <li><a href="#provenance">§4 Provenance — welche Zeile blockt was?</a></li>
+    <li><a href="#phase7">§5 Phase 7 — Pattern-Gaps füllen</a></li>
+    <li><a href="#future">§6 Future / kleine Optimierungen</a></li>
+    <li><a href="#plan">§P Umsetzungsplan</a></li>
+    <li><a href="#decisions">§D Entscheidungs-Log</a></li>
+    <li><a href="#yagni">§Y YAGNI-Linie</a></li>
+    <li><a href="#open">§? Offene Punkte</a></li>
+    <li><a href="#brainstorm">§B Brainstorming-Entscheidungen (2026-05-13)</a></li>
+    <li><a href="#next">§N Next Steps</a></li>
+  </ol>
+</nav>
+
+<section id="motivation">
+<h2><span class="num">§0</span>Motivation &amp; Zielbild</h2>
+
+<p>
+  v0.7 hat <code>.redactorignore</code> (gitignore-style Pfade + Keywords) und den ML-Classifier (Path-Block-Vorschläge) eingeführt. Beim echten Einsatz haben sich vier konkrete Lücken gezeigt:
+</p>
+
+<ol>
+  <li><strong>Classifier produziert nur Pfade, keine Keywords.</strong> Personennamen, Codenamen und ähnliches müssen manuell gepflegt werden — der zweitwichtigste Use-Case (Keywords aus PII-Hits ableiten) ist ungelöst.</li>
+  <li><strong>Jeder <code>classify-files</code>-Lauf ist Full-Scan.</strong> Bei 5000 Files in <code>~/Documents</code> dauert das jede Iteration neu — der User sieht außerdem dieselben bereits abgelehnten Vorschläge wieder und wieder.</li>
+  <li><strong>Pattern-Coverage hat Gaps:</strong> <code>auth.psd1</code> mit <code>ClientId</code>/<code>TenantId</code> kommt teilweise durch, OneDrive-Pfade auf <code>.pfx</code>-Dateien werden im Bash-<em>Output</em> nicht voll-maskiert, Windows-Usernames in <code>C:\Users\…</code> bleiben sichtbar.</li>
+  <li><strong>Debugging-Lücke:</strong> Wenn etwas geblockt wird, sieht man nicht, <em>welche Regel</em> oder <em>welche Zeile in <code>.redactorignore</code></em> den Block ausgelöst hat. Erschwert das Erkennen von Over-Blocking.</li>
+</ol>
+
+<p>Dieses Spec adressiert alle vier in zwei Phasen.</p>
+
+<div class="callout tradeoff">
+  <h4>Leitlinie für dieses Spec</h4>
+  <p><strong>Additiv, nicht destruktiv.</strong> Phase 6 erweitert den Classifier um Keyword-Stream + State-File, ändert aber nichts an der bestehenden Pfad-Logik. Phase 7 fügt fehlende Patterns hinzu, ohne existierende zu ändern. Niemand muss sein <code>.redactorignore</code> migrieren.</p>
+</div>
+</section>
+
+<section id="findings">
+<h2><span class="num">§1</span>Befunde aus echtem Einsatz</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Symptom</th><th>Reproduktion</th><th>Ursache</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tag-bug">F1</span></td>
+      <td>Bei einem OneDrive-Pfad mit <code>.pfx</code> im Bash-Output wird nur das Firmen-Keyword im Pfad maskiert. Das <code>.pfx</code>-File selbst (Filename + Pfad) bleibt komplett lesbar.</td>
+      <td>Output von <code>ls "OneDrive - &lt;Firma&gt; SE/Zertifikate/"</code> zeigt vollständig Pfade wie <code>cert-prod.pfx</code>, <code>backup.pfx</code> — Pre-Tool-Block greift nicht, weil der Command-String <em>auf den Ordner</em> zeigt, nicht auf die <code>.pfx</code>-Datei.</td>
+      <td><code>match_crypto_container</code> greift nur, wenn der Command-String selbst die Crypto-Endung enthält. Files <em>im Output</em> durchlaufen Pattern-Mode-Redaktion, der hat aber keine Regel für „Pfade auf Crypto-Extensions". </td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-bug">F2</span></td>
+      <td><code>auth.psd1</code> mit ClientId / TenantId geht (teilweise) durch.</td>
+      <td>PowerShell-Hash-Tabelle mit <code>ClientId = '...'</code> wird matched, aber Varianten ohne GUID-Format oder mit anderen Feldnamen (<code>ApplicationId</code>, <code>CertificateThumbprint</code>) entkommen. Außerdem: <code>.psd1</code> ist heute nicht in Office-Doc-Defaults oder Crypto-Liste.</td>
+      <td>Pattern <code>azure_cred_guid</code> deckt 6 Feldnamen ab, GUID-Werte. PSD1-Files können aber beliebige Credentials enthalten (Thumbprints, Secrets, App-Names). Kein structural Mode für <code>.psd1</code>, keine Type-Detection.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-bug">F3</span></td>
+      <td><code>C:\Users\Alice\…</code> bleibt im Output sichtbar — Username ist personenbezogen.</td>
+      <td>Jeder File-Listing, jede Stack-Trace, jeder Pfad-Output enthält den Windows-Username.</td>
+      <td>Keine Pattern-Rule für „Home-Dir-Path" oder „Username". Der Path-Guard blockt Lese-Zugriffe, redacted aber den Username nicht in Output-Streams.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-warn">F4</span></td>
+      <td>Path-Guard ist zu aggressiv: <code>grep -E "\.pfx"</code> wird geblockt, obwohl <code>.pfx</code> nur als Regex-Pattern auftaucht, nicht als Pfad-Argument.</td>
+      <td>Real beobachtet bei der Entwicklung dieses Specs: <code>grep -nE "\.pfx" src/hook.rs</code> →&nbsp;<code>refused — command touches a crypto container</code>.</td>
+      <td>Substring-Match auf <code>.pfx</code> im command-string ohne Kontextprüfung (Quoting, Position nach Regex-Flags, Existenz des Files).</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-bug">F5</span></td>
+      <td>Wiederholte Vorschläge: nach <code>classify-merge</code> mit „no" werden im nächsten Run dieselben Files wieder vorgeschlagen.</td>
+      <td>Jeder <code>classify-files ~/Documents</code>-Lauf produziert identische <code>.suggested</code>-Liste (außer es kommen neue Files hinzu).</td>
+      <td>Kein State-File. Classifier kennt keine Decision-History.</td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-bug">F6</span></td>
+      <td>Keine Keyword-Vorschläge.</td>
+      <td><code>classify-files</code> schreibt ausschließlich Pfade in <code>.suggested</code>. Personennamen / Firmennamen aus PII-Hits müssen manuell aus der <code>evidence</code>-Zeile gepflückt werden.</td>
+      <td>YAGNI-Entscheidung aus v0.7-Spec („Modus 1 reicht"). Realer Einsatz zeigt: Modus 2 ist komplementär nötig.</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+<section id="phase6">
+<h2><span class="num">§2</span>Phase 6 — Hybrid-Output &amp; Inkrementalität</h2>
+
+<p>Kernumbau des Classifiers: zweispurige Vorschläge (Pfade + Keywords), Hash-basierter State, Decision-Memory.</p>
+
+<h3>6.1 Architektur-Diagramm</h3>
+
+<div class="mermaid">
+flowchart TB
+    U["User"] -->|"classify-files dir"| R["classify-files (Rust)"]
+    R -->|"walkdir + skip-patterns"| FS["Filesystem"]
+    R -->|"liest pro File"| State["state.json<br/>(Hash + Decision)"]
+    R -->|"Hash unverändert &amp;<br/>Decision ≠ pending?"| Skip["skip"]
+    R -->|"neu oder geändert"| P["Python sidecar<br/>(Presidio + GLiNER)"]
+    P -->|"Entities + Confidence"| R
+    R -->|"Pfad-Vorschläge"| SP["~/.redactorignore.suggested"]
+    R -->|"Keyword-Vorschläge<br/>(PERSON / ORG / EMAIL,<br/>≥2 distinct files)"| SK["~/.redactorignore.keywords.suggested"]
+    R -->|"State-Update<br/>(hash, classified_at, pending)"| State
+
+    U -->|"classify-merge --paths"| MP["interaktiv y/n/s/q"]
+    U -->|"classify-merge --keywords"| MK["interaktiv y/n/s/q"]
+    MP -->|"akzeptiert"| RI["~/.redactorignore"]
+    MK -->|"akzeptiert"| RI
+    MP -->|"Decision = accepted/rejected"| State
+    MK -->|"Decision = accepted/rejected"| State
+</div>
+
+<h3>6.2 State-File-Schema</h3>
+
+<pre><code>// &lt;config&gt;/classifier/state.json
+{
+  "version": 1,
+  "last_full_scan": "2026-05-13T09:42:11+02:00",
+  "files": {
+    "C:/Users/alice/Documents/Steuer/2024/erklaerung.pdf": {
+      "sha256": "3a4f8c…",
+      "size_bytes": 1245678,
+      "mtime_ns": 1747139831000000000,
+      "classified_at": "2026-05-13T09:42:11+02:00",
+      "decision": "accepted",
+      "decision_at": "2026-05-13T10:15:03+02:00",
+      "kind": "path",
+      "labels": ["TAX_DOC", "PERSONAL_RECORD"],
+      "confidence": 0.92
+    }
+  },
+  "keywords": {
+    "Niclas Edge": {
+      "decision": "accepted",
+      "decision_at": "2026-05-13T10:15:03+02:00",
+      "first_seen_in": "C:/Users/.../Steuer/2024/erklaerung.pdf",
+      "occurrence_count": 14,
+      "entity_type": "PERSON",
+      "score_avg": 0.91
+    },
+    "PROJECT-NIGHTHAWK": {
+      "decision": "rejected",
+      "decision_at": "2026-05-13T10:16:22+02:00",
+      "occurrence_count": 3,
+      "entity_type": "MISC"
+    }
+  }
+}</code></pre>
+
+<h4>Decision-Werte</h4>
+<ul>
+  <li><code>accepted</code> — in <code>~/.redactorignore</code> übernommen → skip in folgenden Läufen (außer <code>--reconsider-accepted</code>)</li>
+  <li><code>rejected</code> — User hat „no" gesagt → skip (außer <code>--reconsider-rejected</code>)</li>
+  <li><code>pending</code> — in <code>.suggested</code>, noch nicht reviewed → wird nicht erneut vorgeschlagen, bleibt aber im File</li>
+  <li><code>null</code> / fehlt — noch nie klassifiziert → wird verarbeitet</li>
+</ul>
+
+<h3>6.3 Keyword-Extraktion — Filter-Pipeline</h3>
+
+<p>GLiNER produziert pro File typischerweise 0-50 Entities. Ohne Filter wäre <code>.keywords.suggested</code> Müll. Die Pipeline filtert in drei Stufen:</p>
+
+<div class="mermaid">
+flowchart TD
+    E["GLiNER Entities<br/>(text, label, score)<br/>pro File"] --> F1{"label ∈ {PERSON,<br/>ORGANIZATION,<br/>EMAIL, LOCATION}?"}
+    F1 -->|"nein"| Drop1["drop"]
+    F1 -->|"ja"| F2{"score ≥ 0.85?"}
+    F2 -->|"nein"| Drop2["drop"]
+    F2 -->|"ja"| F3{"len ≥ 3 Zeichen<br/>&amp; nicht reine Ziffern?"}
+    F3 -->|"nein"| Drop3["drop"]
+    F3 -->|"ja"| Agg["aggregiere über alle Files"]
+    Agg --> F4{"occurrence_count<br/>in ≥ 2 distinct files?"}
+    F4 -->|"nein"| Drop4["drop"]
+    F4 -->|"ja"| F5{"bereits in<br/>~/.redactorignore?"}
+    F5 -->|"ja"| Drop5["drop (dedup)"]
+    F5 -->|"nein"| Out["→ .keywords.suggested"]
+</div>
+
+<h4>Begründung der Filter-Schwellen</h4>
+<table>
+  <thead><tr><th>Filter</th><th>Schwelle</th><th>Warum</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Entity-Type</td>
+      <td>PERSON, ORGANIZATION, EMAIL, LOCATION</td>
+      <td>Wiederverwendbar über Files. TAX_NUMBER / IBAN / PHONE sind file-spezifisch → bleiben im Pfad-Stream.</td>
+    </tr>
+    <tr>
+      <td>Min-Score</td>
+      <td>0.85</td>
+      <td>Strenger als Path-Stream (0.6) — Keywords wirken global, falsche Positives sind teurer.</td>
+    </tr>
+    <tr>
+      <td>Min-Länge</td>
+      <td>3 Zeichen, nicht ausschließlich Ziffern</td>
+      <td>Verhindert Initialen / Hausnummern als Keywords.</td>
+    </tr>
+    <tr>
+      <td>Min-Occurrence</td>
+      <td>≥ 2 distinct files</td>
+      <td>Wichtigster Filter. Eine PERSON in einem File = wahrscheinlich Zufall. Dieselbe Person in 3 Files = relevant.</td>
+    </tr>
+    <tr>
+      <td>Dedup</td>
+      <td>case-insensitive gegen <code>~/.redactorignore</code></td>
+      <td>Vermeidet doppelte Einträge bei Re-Scans.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>6.4 CLI-Erweiterungen</h3>
+
+<pre><code># Inkrementell (Default): nur unbekannte / geänderte Files
+redactor classify-files ~/Documents
+
+# Force-Full-Scan
+redactor classify-files ~/Documents --force
+
+# Nur Files, die in den letzten 30 Tagen modifiziert wurden
+redactor classify-files ~/Documents --since 30d
+
+# Auch früher abgelehnte Files nochmal anbieten
+redactor classify-files ~/Documents --reconsider-rejected
+
+# Nur eine Output-Sorte
+redactor classify-files ~/Documents --paths-only
+redactor classify-files ~/Documents --keywords-only
+
+# State-Datei inspizieren / aufräumen
+redactor classify-state show                    # human-readable Tabelle
+redactor classify-state show --format json
+redactor classify-state prune                   # entfernt Einträge zu nicht-existenten Files
+redactor classify-state forget &lt;path-or-keyword&gt;  # löscht eine Decision (sodass sie wieder vorgeschlagen wird)
+
+# Merge erweitert
+redactor classify-merge --paths    ~/.redactorignore.suggested
+redactor classify-merge --keywords ~/.redactorignore.keywords.suggested
+redactor classify-merge --all      # beide hintereinander</code></pre>
+
+<h3>6.5 Workflow: erster vs. wiederholter Lauf</h3>
+
+<div class="grid-2">
+  <div>
+    <h4>Erstlauf (Cold State)</h4>
+    <pre><code># 5000 Files in ~/Documents
+$ redactor classify-files ~/Documents
+walking 5000 files...
+  4823 candidate files (177 skipped: hidden/symlinks/binary)
+  4823 to classify (state empty)
+classifying via sidecar (~25 min)...
+  342 path-suggestions written
+  18  keyword-candidates written
+  state.json: 4823 entries
+
+$ redactor classify-merge --all
+  342 paths to review →    [y/n/s/q]
+  18  keywords to review → [y/n/s/q]
+
+$ redactor classifier-state show
+  total: 4823 / accepted: 87 (paths) + 12 (keywords) /
+  rejected: 255 (paths) + 6 (keywords) /
+  pending: 0</code></pre>
+  </div>
+  <div>
+    <h4>Folgelauf (Warm State)</h4>
+    <pre><code># 5 Wochen später, 47 neue Files + 12 geändert
+$ redactor classify-files ~/Documents
+walking 5000 files...
+  4953 candidates (current scan)
+  4847 unchanged (skip via hash-cache)
+  47   new files
+  12   modified files (hash mismatch)
+  → 59 to classify
+classifying (~30 sec)...
+  4 path-suggestions, 1 keyword-candidate
+
+$ redactor classify-merge --all
+  4 paths to review → [y/n/s/q]
+  1 keyword to review → [y/n/s/q]</code></pre>
+  </div>
+</div>
+
+<div class="callout ok">
+  <h4>Latenz-Effekt</h4>
+  <p>Cold-Run: 5000 Files × ~300 ms = ~25 min. Warm-Run mit nur Hash-Check: 5000 × ~5 ms = ~25 sec. Klassifikation nur für die 59 neuen/geänderten = ~30 sec. <strong>Faktor ~50× schneller</strong> bei typischem Inkrement.</p>
+</div>
+</section>
+
+<section id="format">
+<h2><span class="num">§3</span>Format-Diskussion: JSON vs. gitignore-style</h2>
+
+<p>Frage: soll <code>.redactorignore</code> selbst JSON werden? Oder zumindest <code>.suggested</code>?</p>
+
+<h3>3.1 Trade-Off-Matrix</h3>
+
+<table>
+  <thead><tr><th>Aspekt</th><th>gitignore-style (heute)</th><th>JSON</th></tr></thead>
+  <tbody>
+    <tr><td>Mit der Hand editierbar</td><td><span class="tag tag-ok">JA</span> — vertraute Syntax</td><td><span class="tag tag-warn">UMSTÄNDLICH</span> — Quoting, Kommas, keine Comments</td></tr>
+    <tr><td>Comments + Provenance</td><td><span class="tag tag-warn">eingeschränkt</span> — nur als <code>#</code>-Lines davor</td><td><span class="tag tag-ok">JA</span> — strukturierte Felder pro Eintrag</td></tr>
+    <tr><td>Tooling (Diff, Merge in git)</td><td><span class="tag tag-ok">JA</span> — line-based diffs</td><td><span class="tag tag-warn">SCHLECHT</span> — JSON-Diffs sind unleserlich</td></tr>
+    <tr><td>Programmatische Analyse</td><td><span class="tag tag-warn">PARSING</span> nötig (Heuristik Keyword vs. Pfad)</td><td><span class="tag tag-ok">TRIVIAL</span></td></tr>
+    <tr><td>Verbosity</td><td>1 Zeile pro Eintrag</td><td>5-8 Zeilen pro Eintrag (mit Metadaten)</td></tr>
+    <tr><td>Validierung</td><td>nicht möglich</td><td><span class="tag tag-ok">JSON Schema</span></td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Empfehlung: Hybrid mit klarer Trennung</h3>
+
+<p>Drei Files, drei Formate, drei Verantwortlichkeiten:</p>
+
+<table>
+  <thead><tr><th>File</th><th>Format</th><th>Wer schreibt</th><th>Wer liest</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>~/.redactorignore</code></td>
+      <td>gitignore-style (unverändert)</td>
+      <td>Mensch + <code>classify-merge</code> (append-only)</td>
+      <td>Hook-Runtime (jeder Tool-Call)</td>
+    </tr>
+    <tr>
+      <td><code>~/.redactorignore.suggested</code><br><code>~/.redactorignore.keywords.suggested</code></td>
+      <td>Default: gitignore-style mit <code>#</code>-Metadaten<br>Optional: <code>--format json</code></td>
+      <td><code>classify-files</code></td>
+      <td><code>classify-merge</code> + Mensch (Review)</td>
+    </tr>
+    <tr>
+      <td><code>&lt;config&gt;/classifier/state.json</code></td>
+      <td>JSON (immer)</td>
+      <td><code>classify-files</code> + <code>classify-merge</code></td>
+      <td><code>classify-state</code> + interne Logik</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout tradeoff">
+  <h4>Warum nicht JSON für <code>.redactorignore</code> selbst?</h4>
+  <ul>
+    <li><strong>Editier-Frequenz:</strong> Der Mensch fasst <code>.redactorignore</code> mehrmals pro Woche an (Keywords ergänzen). Comments sind dort essentiell („# Kunde X — seit 2024-03"). JSON würde diese UX kaputtmachen.</li>
+    <li><strong>Hook-Latenz:</strong> JSON-Parsing pro Tool-Call wäre zwar nicht <em>langsam</em>, aber die gitignore-Heuristik ist deterministisch und cached schon im Path-Guard.</li>
+    <li><strong>Git-Diff-Lesbarkeit:</strong> Ein PR „add 3 keywords" ist als gitignore-Diff sofort verständlich, als JSON-Diff frickelig.</li>
+  </ul>
+</div>
+
+<h3>3.3 JSON-Format für <code>.suggested</code> (optional via <code>--format json</code>)</h3>
+
+<p>Existiert heute schon, sollte aber das neue Hybrid-Schema bekommen:</p>
+
+<pre><code>{
+  "version": 1,
+  "generated": "2026-05-13T09:42:11+02:00",
+  "input": "/Users/alice/Documents",
+  "stats": { "scanned": 5000, "above_threshold": 342, "skipped_cached": 4847 },
+  "threshold": 0.6,
+  "paths": [
+    {
+      "path": "/Users/alice/Documents/Steuer/2024/erklaerung.pdf",
+      "confidence": 0.92,
+      "labels": ["TAX_DOC", "PERSONAL_RECORD"],
+      "evidence": "Detected '12/345/67890' (TAX_DOC, score=0.95), 'Niclas Edge' (PERSON, 0.91)",
+      "entities": [
+        {"text": "12/345/67890", "label": "TAX_DOC", "score": 0.95, "type": "TAX_NUMBER"},
+        {"text": "Niclas Edge", "label": "PERSON", "score": 0.91, "type": "PERSON"}
+      ]
+    }
+  ],
+  "keywords": [
+    {
+      "text": "Niclas Edge",
+      "entity_type": "PERSON",
+      "score_avg": 0.91,
+      "occurrence_count": 14,
+      "first_seen_in": "/Users/alice/Documents/Steuer/2024/erklaerung.pdf",
+      "sample_contexts": [
+        ".../erklaerung.pdf", ".../personalakte.txt", ".../email-export.eml"
+      ]
+    }
+  ]
+}</code></pre>
+
+<p>So sieht der User pro Keyword sofort: <em>woher kommt der Vorschlag, in wie vielen Files, mit welchem Score</em> — kritisch für die „accept/reject"-Entscheidung.</p>
+</section>
+
+<section id="provenance">
+<h2><span class="num">§4</span>Provenance — welche Zeile blockt was?</h2>
+
+<p>Heute: wenn ein File geblockt wird, sagt der Hook <em>was</em> geblockt wurde („path is on the user's .redactorignore list"), aber nicht <em>welche Zeile</em> oder <em>welche Regel-Kategorie</em>.</p>
+
+<h3>4.1 Erweiterte Block-Begründungen</h3>
+
+<p>Idee: Path-Guard und Pattern-Mode tracken pro Match die Quelle. Sichtbar via neuem Subcommand:</p>
+
+<pre><code>$ redactor explain "/Users/alice/Documents/Steuer/2024/erklaerung.pdf"
+
+block source           rule/line                              category
+─────────────────────  ─────────────────────────────────────  ─────────────────
+path-guard             ~/.redactorignore:42                   user_path
+                       ~/Documents/Steuer/**
+
+$ redactor explain "Initech ist ein Kunde"
+
+block source           rule/line                              category
+─────────────────────  ─────────────────────────────────────  ─────────────────
+keyword-match          ~/.redactorignore:8                    user_keyword
+                       Initech                              (case-insensitive)
+
+$ redactor explain "TenantId=12345678-1234-1234-1234-123456789012"
+
+block source           rule/line                              category
+─────────────────────  ─────────────────────────────────────  ─────────────────
+pattern-match          patterns.rs::defaults() rule[31]       azure_cred_guid
+                       (?i)(TenantId|ClientId|AppId|…)…
+
+$ redactor explain "C:\Users\niclas.edge\AppData\Local\foo.pfx"
+
+block source           rule/line                              category
+─────────────────────  ─────────────────────────────────────  ─────────────────
+crypto-container       hardcoded                              .pfx (PKCS#12)
+                       hook.rs::match_crypto_container</code></pre>
+
+<h3>4.2 Implementation-Skizze</h3>
+
+<p>Pattern-Match-Returns erweitern um Source-Info:</p>
+
+<pre><code>pub struct Match {
+    pub rule_name: String,
+    pub source: MatchSource,        // ← neu
+    pub start: usize,
+    pub end: usize,
+    pub replacement: String,
+}
+
+pub enum MatchSource {
+    Builtin { rule_index: usize, regex: &'static str },
+    UserKeyword { line_number: usize, raw: String },
+    UserPath    { line_number: usize, raw: String },
+    ProjectToml { file: PathBuf, section: &'static str, idx: usize },
+    Hardcoded   { fn_name: &'static str, label: &'static str },
+}</code></pre>
+
+<h3>4.3 Audit-Log-Erweiterung</h3>
+
+<p>Der existierende TSV-Log bekommt zwei zusätzliche Spalten:</p>
+
+<pre><code>timestamp  source=…  command=…  mode=…  rule=…  count=N  sample=…  origin=…  origin_ref=…
+                                                                  ^^^^^^^^^^^^^^^^^^^^^^
+                                                                  user_keyword  ~/.redactorignore:8
+                                                                  builtin       patterns.rs:azure_cred_guid
+                                                                  hardcoded     hook.rs:match_crypto_container</code></pre>
+
+<p>So lässt sich nach einem Tag Arbeit nachvollziehen: <em>welche Regeln haben wie oft gefeuert?</em> Hilfreich für „Over-Redaction"-Tuning.</p>
+
+<div class="callout">
+  <h4>Aufwand vs. Wert</h4>
+  <p>~600 LOC in Rust für Source-Tracking durch die ganze Pipeline. Mittel-hoch. Aber: zahlt sich aus, sobald der User mit „warum wurde X redacted?"-Fragen kommt — heute ist die Antwort detective-work.</p>
+</div>
+</section>
+
+<section id="phase7">
+<h2><span class="num">§5</span>Phase 7 — Pattern-Gaps füllen</h2>
+
+<p>Die drei Befunde F1/F2/F3/F4 aus §1 brauchen jeweils eigene Fixes. Klein und punktuell, keine Architektur-Änderung.</p>
+
+<h3>7.1 F1: Crypto-Container-Pfade auch im Text-Output maskieren</h3>
+
+<h4>Problem</h4>
+<p><code>match_crypto_container</code> blockt Pre-Tool, aber Output-Streams (ls-Listing eines Ordners) zeigen <code>.pfx</code>-Pfade als gewöhnlichen Text.</p>
+
+<h4>Fix</h4>
+<p>Neue Pattern-Rule in <code>patterns.rs::defaults()</code>:</p>
+
+<pre><code>("crypto_container_path",
+ r"(?i)[/\\][^/\\\s'\"]+\.(kdbx|kdb|gpg|pgp|asc|age|p12|pfx|keychain-db|pem|key)\b",
+ "&lt;redacted:crypto_container_path&gt;"),</code></pre>
+
+<p>Matcht Pfad-artige Tokens, die mit Crypto-Extension enden, und ersetzt den <strong>ganzen Pfad</strong> (nicht nur die Extension). Pattern-Mode in Bash-Output greift dann auch.</p>
+
+<h4>Tests</h4>
+<ul>
+  <li>Positive: <code>cert-prod.pfx</code>, <code>/Users/x/vault.kdbx</code>, <code>C:\…\backup.gpg</code></li>
+  <li>Negative: <code>example.com</code>, Wort „pfx" ohne Pfad-Kontext</li>
+  <li>Edge: Pfad mit Spaces in OneDrive-Pfaden — eventuell zwei-Pass-Strategie</li>
+</ul>
+
+<h3>7.2 F2: PSD1 / PowerShell-Credentials breiter abdecken</h3>
+
+<h4>Problem</h4>
+<p><code>auth.psd1</code> kann beliebige Felder enthalten: <code>ApplicationId</code>, <code>CertificateThumbprint</code>, <code>ClientSecret</code>, <code>Username</code>, <code>Password</code>. Aktuelle Patterns decken nur 6 Azure-GUID-Felder ab.</p>
+
+<h4>Fix — drei Schichten</h4>
+
+<ol>
+  <li><strong>Pattern-Erweiterung in <code>defaults()</code>:</strong>
+    <pre><code>// Erweiterte Azure / Entra ID Felder
+("azure_cred_guid_extended",
+ r#"(?i)(TenantId|ClientId|AppId|ApplicationId|ObjectId|SubscriptionId|DirectoryId|PrincipalId)["']?\s*[:=]\s*["']?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}["']?"#,
+ "$1=&lt;redacted:azure_guid&gt;"),
+
+// CertificateThumbprint (SHA-1 hex)
+("cert_thumbprint",
+ r#"(?i)(CertificateThumbprint|Thumbprint|FingerPrint)["']?\s*[:=]\s*["']?[0-9A-Fa-f]{40}["']?"#,
+ "$1=&lt;redacted:cert_thumbprint&gt;"),
+
+// Generic Secret-Field-Heuristik für PowerShell
+("ps_secret_field",
+ r#"(?i)(ClientSecret|ApiKey|AccessKey|Token|RefreshToken|Password|Secret|PSCred)\s*=\s*["'][^"']{8,}["']"#,
+ "$1=&lt;redacted:ps_secret&gt;"),</code></pre>
+  </li>
+  <li><strong>Structural-Mode für <code>.psd1</code>:</strong> Wie heute für <code>.env</code> — Read-Tool blocken, forcen auf <code>redactor --type psd1 &lt;file&gt;</code>. Neuer Mode in <code>redactor.rs::Mode::PowerShellData</code> mit AST-Light-Parser (Schlüssel-Wert-Paare), Values immer <code>&lt;redacted&gt;</code>.</li>
+  <li><strong>Optional: <code>.psd1</code> in Path-Guard-Default aufnehmen</strong> wenn der Filename einem <code>auth|cred|secret|key</code>-Muster folgt — analog zu <code>.env</code>-Familie.</li>
+</ol>
+
+<h3>7.3 F3: Username / Home-Dir-Path automatisch maskieren</h3>
+
+<h4>Problem</h4>
+<p><code>C:\Users\Alice\…</code> und <code>/home/alice/…</code> leaken den Username — personenbezogen, in jedem Pfad-Output sichtbar.</p>
+
+<h4>Fix — dynamisches Pattern aus env</h4>
+
+<p>Beim Start: aktueller Username aus env lesen, in eine Runtime-Pattern-Rule rein-compilen.</p>
+
+<pre><code>fn dynamic_username_rule() -&gt; Option&lt;Rule&gt; {
+    let username = std::env::var("USERNAME")              // Windows
+        .or_else(|_| std::env::var("USER"))               // Unix
+        .ok()?;
+    if username.len() &lt; 2 { return None; }                // skip super-short
+
+    // Match in path-context, case-insensitive
+    let re = format!(
+        r"(?i)([/\\])({})([/\\])",
+        regex::escape(&username)
+    );
+    Some(Rule {
+        name: "current_username",
+        regex: re,
+        replacement: "$1&lt;redacted:username&gt;$3".to_string(),
+        // origin: dynamic, env-derived
+    })
+}</code></pre>
+
+<h4>Plus: explizite Home-Dir-Rule</h4>
+
+<pre><code>// Windows Home-Dir-Pattern (matched auch fremde Usernames)
+("windows_home_dir",
+ r"(?i)C:[\\/]Users[\\/]([^\\/\s'\"]+)",
+ "C:\\Users\\&lt;redacted:username&gt;"),
+
+// Unix Home-Dir-Pattern
+("unix_home_dir",
+ r"(?:^|[\s'\"])/(?:home|Users)/([^/\s'\"]+)",
+ "/home/&lt;redacted:username&gt;"),</code></pre>
+
+<h4>Trade-Off</h4>
+<div class="callout warn">
+  <p>Username-Maskierung führt zu unleserlichen Outputs in <code>find</code>-/<code>ls</code>-Resultaten — der LLM sieht statt <code>C:\Users\niclas.edge\Documents\foo</code> nur noch <code>C:\Users\&lt;redacted:username&gt;\Documents\foo</code>. Für die meisten Tool-Calls OK, in Pfad-Operationen aber relevant. <strong>Empfehlung: Default ON, opt-out per Config (<code>[policy] mask_username = false</code>).</strong></p>
+</div>
+
+<h3>7.4 F4: Path-Guard-Smartness — nicht bei Pattern-Literalen blocken</h3>
+<p><em>Inhalt wie unten</em> — danach folgen die brainstorming-getriggerten Sub-Phasen 7e–7i (siehe §B).</p>
+
+<h4>Problem</h4>
+<p><code>grep -E "\.pfx"</code> wird geblockt, obwohl <code>.pfx</code> nur als Regex-Literal nach <code>-E</code> auftaucht.</p>
+
+<h4>Fix</h4>
+<p>Im Pre-Bash-Hook: vor dem Substring-Match parsen, ob das Token im Argument-Kontext eines bekannten Pattern-Flags steht:</p>
+
+<pre><code>fn extract_path_tokens(cmd: &str) -&gt; Vec&lt;&amp;str&gt; {
+    // Tokenize (respecting quotes), then filter out arguments that
+    // immediately follow a "pattern-only" flag like -E / -e / --regex /
+    // -P (grep family) or --grep (git family).
+    let tokens = shlex::split(cmd)?;
+    let mut paths = Vec::new();
+    let mut skip_next = false;
+    for tok in &tokens {
+        if skip_next { skip_next = false; continue; }
+        if matches!(tok.as_str(), "-E" | "-e" | "-P" | "--regex" | "--grep" | "--include" | "--exclude") {
+            skip_next = true;          // next token is a pattern, not a path
+            continue;
+        }
+        paths.push(tok);
+    }
+    paths
+}</code></pre>
+
+<p>Plus: optional File-Existenz-Check vor dem Block — wenn der Token nicht im Filesystem auflösbar ist, ist es vermutlich kein Pfad-Touch. <strong>Aber:</strong> Risiko von TOCTOU-Race. Daher als Heuristik nur in Kombination mit Token-Position.</p>
+
+<h4>Tests</h4>
+<ul>
+  <li><code>grep -E "\.pfx" file.txt</code> → nicht blocken (Pattern-Literal)</li>
+  <li><code>grep "x" cert.pfx</code> → blocken (Crypto-Container in Argument)</li>
+  <li><code>cat /Users/x/vault.pfx</code> → blocken (direkter Pfad)</li>
+  <li><code>echo "vault.pfx ist ein File"</code> → Edge-Case, vermutlich nicht-blocken (echo-Argument, kein File-Touch)</li>
+</ul>
+</section>
+
+<section id="future">
+<h2><span class="num">§6</span>Future / kleine Optimierungen</h2>
+
+<p>Sammelliste — nichts davon ist in Phase 6 oder 7 enthalten, alles als kleinerer Follow-up.</p>
+
+<table>
+  <thead><tr><th>Item</th><th>Kategorie</th><th>Beschreibung</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Watch-Mode</td>
+      <td>Classifier</td>
+      <td><code>redactor classify-files ~/Documents --watch</code> mit fs-Events (notify-rs) — re-klassifiziert nur veränderte Files, schreibt incremental in <code>.suggested</code>. Deamon-Variante, optional.</td>
+    </tr>
+    <tr>
+      <td>Bulk-Rules-Import</td>
+      <td><code>.redactorignore</code></td>
+      <td><code>redactor ignore import &lt;file&gt;</code> — liest <code>vcards/contacts.csv</code> oder Personalliste, extrahiert Namen, fügt als Keywords hinzu. Manuelle Bulk-Ergänzung ohne Classifier.</td>
+    </tr>
+    <tr>
+      <td>Reverse-Lookup</td>
+      <td>Tooling</td>
+      <td><code>redactor uses-keyword "Initech"</code> — listet welche Tool-Calls in den letzten N Tagen den Keyword getroffen haben. Aus Audit-Log.</td>
+    </tr>
+    <tr>
+      <td>Pattern-Coverage-Test</td>
+      <td>Quality</td>
+      <td>Test-Suite mit Real-World-Fixtures (anonymisierte PSD1, .env, Steuerbescheid-Text-Excerpt) die periodisch gegen Pattern-Set läuft. CI-Gate.</td>
+    </tr>
+    <tr>
+      <td>Keyword-Conflict-Detection</td>
+      <td>UX</td>
+      <td>Wenn ein neuer Keyword in <code>.redactorignore</code> ein bestehendes Token mehrdeutig macht (z.B. „Berlin" matched zu viel), Warning bei Commit.</td>
+    </tr>
+    <tr>
+      <td>Per-Project Keyword-Sets</td>
+      <td><code>.redactor.toml</code></td>
+      <td>Projekt-spezifische Keywords zusätzlich zu <code>~/.redactorignore</code> — Use-Case: Kunde-X-Codenamen, die nur in dem einen Repo gelten.</td>
+    </tr>
+    <tr>
+      <td>Custom Entity-Type für Keyword-Filter</td>
+      <td>Classifier</td>
+      <td><code>--keyword-entity-types PERSON,ORG,EMAIL,JOB_TITLE</code> als CLI-Override für die Default-Whitelist aus §2.3.</td>
+    </tr>
+    <tr>
+      <td>Confidence-History</td>
+      <td>State</td>
+      <td>State-File trackt nicht nur letzte Confidence, sondern Verlauf — sichtbar machen wenn ein File „signal stronger over time" wird (z.B. wenn Inhalt um PII ergänzt wurde).</td>
+    </tr>
+    <tr>
+      <td><code>classifier-doctor</code></td>
+      <td>Diagnostik</td>
+      <td>Subcommand: prüft venv-Integrität, Modell-Hashes, State-File-Konsistenz, gibt Repair-Hints.</td>
+    </tr>
+    <tr>
+      <td>Performance-Profile</td>
+      <td>Quality</td>
+      <td>Latency-Histogramm pro Pattern-Rule — welche Regeln sind am teuersten? Tunable.</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+<section id="plan">
+<h2><span class="num">§P</span>Umsetzungsplan</h2>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 6a</span>
+    <span class="phase-title">State-File + Hash-Cache + Inkrementalität</span>
+    <span class="phase-size">Size: M (~400 LOC + Tests)</span>
+  </div>
+  <ul>
+    <li>Neues Modul <code>src/classify_state.rs</code> mit <code>State { files, keywords, last_full_scan }</code>, Load/Save via serde_json mit atomic-write.</li>
+    <li><code>src/classify_walk.rs</code> erweitert: SHA256 pro Candidate, Vergleich mit State, Skip wenn unverändert UND Decision ≠ pending.</li>
+    <li>Neue Flags <code>--force</code>, <code>--since</code> in <code>classify_cmd.rs</code>.</li>
+    <li>Neuer Subcommand <code>classify-state {show, prune, forget}</code>.</li>
+    <li>Tests: state-roundtrip, hash-invalidation, decision-skip, prune-removes-vanished.</li>
+  </ul>
+  <p><strong>Akzeptanz:</strong> Zweiter Lauf auf unverändertem Tree ist ≥ 20× schneller als erster. Hash-Mismatch reklassifiziert nur die geänderten Files.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 6b</span>
+    <span class="phase-title">Keyword-Output-Stream + Smart Filter</span>
+    <span class="phase-size">Size: M (~350 LOC + Python-Side)</span>
+  </div>
+  <ul>
+    <li>Python-Seite: Analyzer gibt Entity-Type pro Hit zurück (heute: nur Label aus User-List). Mapping GLiNER-Internal-Label → Entity-Type-Klasse (PERSON / ORGANIZATION / EMAIL / LOCATION / OTHER).</li>
+    <li>Rust-Seite: Aggregations-Pass über alle File-Ergebnisse — distinct-Count pro Entity-Text, Threshold-Filter, Dedup gegen existierendes <code>.redactorignore</code>.</li>
+    <li>Neues Output-File <code>~/.redactorignore.keywords.suggested</code> (gitignore-style mit Metadaten-Comments).</li>
+    <li><code>--paths-only</code> / <code>--keywords-only</code> Flags.</li>
+    <li>Tests: filter-pipeline (jede Stufe einzeln), dedup-against-existing, distinct-count-aggregation.</li>
+  </ul>
+  <p><strong>Akzeptanz:</strong> Bei einem Testtree mit Steuerbescheid + Gehaltsabrechnung + zwei E-Mails von Person X erscheint „Person X" als Keyword-Vorschlag, Steuernummern und IBANs bleiben im Pfad-Stream.</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 6c</span>
+    <span class="phase-title">Decision-Memory in classify-merge</span>
+    <span class="phase-size">Size: S (~200 LOC)</span>
+  </div>
+  <ul>
+    <li><code>classify-merge</code> updated State-File bei jedem y/n: <code>decision = accepted | rejected</code>.</li>
+    <li>Re-Run <code>classify-files</code> filtert rejected-Pfade/Keywords automatisch aus.</li>
+    <li>Flags <code>--reconsider-rejected</code> / <code>--reconsider-accepted</code>.</li>
+    <li><code>classify-merge --paths</code> / <code>--keywords</code> / <code>--all</code> Sub-Flags.</li>
+    <li>Tests: decision-roundtrip, rejected-skip, force-reconsider.</li>
+  </ul>
+  <p><strong>Akzeptanz:</strong> Lauf 1 → 50 Vorschläge, davon 30 rejected. Lauf 2 ohne Änderungen → 0 Vorschläge (statt 50).</p>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 7a</span>
+    <span class="phase-title">Crypto-Container-Path-Pattern (F1)</span>
+    <span class="phase-size">Size: S (~80 LOC)</span>
+  </div>
+  <ul>
+    <li>Neue Pattern-Rule <code>crypto_container_path</code> in <code>defaults()</code>.</li>
+    <li>Tests in <code>tests/eu_pii_patterns.rs</code> + <code>tests/red_team.rs</code> erweitert.</li>
+    <li>Edge-Case-Tests für Pfade mit Spaces (OneDrive — Firmenname SE).</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 7b</span>
+    <span class="phase-title">PSD1 / PowerShell-Credentials erweitern (F2)</span>
+    <span class="phase-size">Size: M (~250 LOC)</span>
+  </div>
+  <ul>
+    <li>3 erweiterte Patterns: <code>azure_cred_guid_extended</code>, <code>cert_thumbprint</code>, <code>ps_secret_field</code>.</li>
+    <li>Neuer Mode <code>Mode::PowerShellData</code> in <code>redactor.rs</code> mit PSD1-Hash-Table-Parser (Light, regex-basiert; keine echte PowerShell-AST).</li>
+    <li><code>.psd1</code> in <code>detect_mode</code> mappen.</li>
+    <li><code>pre-read</code>/<code>pre-bash</code> Guards für <code>.psd1</code> wenn Filename auf <code>auth|cred|secret|key</code> matched.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 7c</span>
+    <span class="phase-title">Username / Home-Dir-Maskierung (F3)</span>
+    <span class="phase-size">Size: S (~150 LOC)</span>
+  </div>
+  <ul>
+    <li>Dynamische Rule beim Init aus <code>USERNAME</code> / <code>USER</code> env.</li>
+    <li>Statische Patterns für <code>C:\Users\&lt;x&gt;</code> und <code>/home/&lt;x&gt; / /Users/&lt;x&gt;</code>.</li>
+    <li>Opt-out via <code>[policy] mask_username = false</code> in <code>.redactor.toml</code>.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 7d</span>
+    <span class="phase-title">Path-Guard-Smartness (F4)</span>
+    <span class="phase-size">Size: S (~120 LOC)</span>
+  </div>
+  <ul>
+    <li>Token-Parser respektiert <code>-E</code>/<code>-e</code>/<code>-P</code>/<code>--regex</code>/<code>--include</code>/<code>--exclude</code> Flags.</li>
+    <li>Tests: grep-Pattern-Literale werden nicht geblockt, echte Pfade schon.</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <div class="phase-header">
+    <span class="phase-no">Phase 8 (optional)</span>
+    <span class="phase-title">Provenance / explain-Subcommand</span>
+    <span class="phase-size">Size: L (~600 LOC)</span>
+  </div>
+  <ul>
+    <li>MatchSource-Enum durch die ganze Pipeline.</li>
+    <li>Neuer Subcommand <code>redactor explain &lt;text|path&gt;</code>.</li>
+    <li>Audit-Log um <code>origin</code> / <code>origin_ref</code> erweitert.</li>
+  </ul>
+  <p><strong>Wird optional gestellt</strong>: hoher Aufwand, wertvoll erst nach längerer Nutzung der erweiterten Pattern-Sets aus Phase 7.</p>
+</div>
+</section>
+
+<section id="decisions">
+<h2><span class="num">§D</span>Entscheidungs-Log</h2>
+
+<h3>D-1 — Hybrid (Pfade + Keywords), nicht Ersatz</h3>
+<p>Keywords ergänzen Pfade, ersetzen sie nicht. Pfad-Blocks bleiben für file-spezifische PII (Steuernummer, IBAN), Keywords für wiederverwendbare Tokens (PERSON, ORG, EMAIL). Begründung: jede File-spezifische Information als globales Keyword zu setzen führt zu Over-Redaction; jeden Personennamen file-by-file zu blocken skaliert nicht.</p>
+
+<h3>D-2 — SHA256-Hash-Cache als Default-Strategie für Inkrementalität</h3>
+<p>~10 ms pro File auf SSD. Bei 5000 Files = 50 sec — akzeptabel als „one-time per re-scan" vs. der Modell-Inference (~25 min). mtime-only war zweite Wahl; <code>touch</code>-Resistance nicht wichtig genug für die User-Realität.</p>
+
+<h3>D-3 — gitignore-Format bleibt für <code>~/.redactorignore</code></h3>
+<p>JSON nur für <code>state.json</code> (Maschinen-State) und optional für <code>.suggested</code> (Agent-Pipelines). Mensch editiert gitignore-style, Maschine konsumiert JSON, beide gleichzeitig glücklich.</p>
+
+<h3>D-4 — Min-Occurrence ≥ 2 als wichtigster Keyword-Filter</h3>
+<p>Single-File-Hits sind statistisch Noise. Doppelte-File-Hits sind signal-stark. Verifizierbar mit Test-Korpus aus echtem <code>~/Documents</code> (anonymisiert).</p>
+
+<h3>D-5 — Username-Maskierung default-on, opt-out per <code>.redactor.toml</code></h3>
+<p>Personenbezogenes Datum, das in jedem zweiten Tool-Output auftaucht. Schaden bei Leak &gt; UX-Nervigkeit bei Default-On. Opt-out für Pfad-intensive Projekte verfügbar.</p>
+</section>
+
+<section id="yagni">
+<h2><span class="num">§Y</span>YAGNI-Linie</h2>
+
+<table>
+  <thead><tr><th>Aus Scope</th><th>Begründung</th></tr></thead>
+  <tbody>
+    <tr><td>Auto-Apply von Keywords ohne <code>classify-merge</code></td><td>Keywords wirken global. Always-require-review.</td></tr>
+    <tr><td>Distributed State (Git-versioniert)</td><td>State ist persönlich, gehört nicht ins Repo. Pro Maschine separat.</td></tr>
+    <tr><td>State-File-Encryption</td><td>State enthält Pfade + Hashes, aber keine Secrets. Standard-FS-Permissions reichen.</td></tr>
+    <tr><td>Keyword-Suggestions aus Filename allein</td><td>Filename ist zu schwaches Signal für globale Keywords. Bleibt Pfad-Stream-only.</td></tr>
+    <tr><td>OpenAI / Cloud-LLM für Keyword-Vorschläge</td><td>Datenschutz — Inhalt darf den Host nicht verlassen.</td></tr>
+    <tr><td>Real-time-Hook: Classifier on Bash-Output</td><td>Latenz + Determinismus. Bleibt Off-Path.</td></tr>
+    <tr><td>Web-UI für <code>classify-merge</code></td><td>Terminal-UX reicht — CLI-Pattern y/n/s/q skaliert.</td></tr>
+  </tbody>
+</table>
+</section>
+
+<section id="open">
+<h2><span class="num">§?</span>Offene Punkte / TBD</h2>
+
+<ol>
+  <li><strong>Hash-Algorithmus:</strong> SHA256 vs. xxhash3. SHA256 ist Standard, xxhash3 ist ~5× schneller. Da wir nicht crypto brauchen (nur Equality-Check), könnte xxhash3 ausreichen. Entscheidung in Phase 6a.</li>
+  <li><strong>Keyword-Entity-Type-Mapping aus GLiNER:</strong> GLiNER gibt Custom-Labels zurück (die User-Labels aus <code>labels.txt</code>). Wie kommen wir an die PRESIDIO-Entity-Typen (PERSON, ORG, EMAIL)? Möglicherweise Presidio's Built-in Recognizers parallel zu GLiNER laufen lassen, oder Label-Heuristik via Regex über Entity-Text.</li>
+  <li><strong>State-File-Locking:</strong> Was passiert bei parallelem <code>classify-files</code>? Atomic-write reicht für letzten-write-wins, aber sauberer wäre fcntl-Lock. Cross-Plattform-Locking ist Sonderfall.</li>
+  <li><strong>Migration von altem State (ohne v6) auf neuen:</strong> Erste <code>classify-files</code>-Lauf mit Phase-6-Binary sollte alten <code>.suggested</code> einlesen (wenn vorhanden) und in State übertragen — Decision = pending. Aufwand klein, aber muss bedacht werden.</li>
+  <li><strong>Pattern-Severity:</strong> Heute alle Patterns gleichwertig. Phase-8-Idee: Tiers (CRITICAL = Crypto-Key / API-Key, HIGH = PII, MEDIUM = Username / Host, LOW = generischer Identifier). Logging + UI-Hint könnten davon profitieren.</li>
+  <li><strong>Username-Pattern-Konflikt:</strong> Wenn der Username „Niclas.Edge" auch Teil legitimer Strings ist (sehr unwahrscheinlich, aber denkbar), führt die Maskierung zu False-Positives. Empirisch in Phase 7c beobachten.</li>
+</ol>
+</section>
+
+<section id="brainstorm">
+<h2><span class="num">§B</span>Brainstorming-Entscheidungen (2026-05-13)</h2>
+
+<p>
+  Sechs Fragen, sechs Antworten — diese Sektion ersetzt die offenen Designentscheidungen aus §2-§5 und überschreibt im Konfliktfall die Default-Werte oben.
+</p>
+
+<h3>B.1 Konsolidierte Entscheidungs-Tabelle</h3>
+
+<table>
+  <thead>
+    <tr><th>Frage</th><th>Entscheidung</th><th>Konsequenz</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Pre-Filter Scope</strong>: welche blockierten Files überspringen?</td>
+      <td><strong>(a)</strong> Alle vier Klassen: hardcoded Crypto + hardcoded .env-Familie + Office-Docs + Files in <code>~/.redactorignore</code>. Nur <code>[allow]</code>-Files werden analysiert.</td>
+      <td>Classifier sieht nur, was der Hook auch lesen würde. Keine redundanten Vorschläge. Spart Sidecar-Latenz für ~5-10 % der Files. Risiko: eine versteckte <code>passwords.kdbx</code> in <code>Documents/</code> wird nicht mehr proaktiv hervorgehoben (Hook blockt sie aber ohnehin).</td>
+    </tr>
+    <tr>
+      <td><strong>Decision-Memory</strong>: wie lange gilt „rejected"?</td>
+      <td><strong>(a)</strong> Strict — niemals wieder vorschlagen, außer <code>--reconsider-rejected</code>.</td>
+      <td>State-File: pro Eintrag genau ein Decision-Wert (<code>accepted</code> / <code>rejected</code> / <code>pending</code> / <code>null</code>). Kein Hash-Tracking für Decision-Validity nötig (Hash bleibt nur für Skip-Logik bei unverändertem Inhalt). Einfaches Modell.</td>
+    </tr>
+    <tr>
+      <td><strong>Office-Docs-Policy</strong>: Read-only blocked oder auch Bash?</td>
+      <td><strong>Read + Bash hard-blocked</strong>. Wenn Read verboten ist, soll Bash auch nicht via Skill lesen oder editieren dürfen.</td>
+      <td>Office-Docs wechseln von Klasse C (heute) zu A/B (hardcoded). <code>docx</code>/<code>xlsx</code>/<code>pdf</code>-Skills brechen in Strict-Mode-Projekten — User aktiviert sie pro Projekt via <code>[allow]</code> in <code>.redactor.toml</code>. Konsistenz: jede Read-Block-Regel impliziert Bash-Block.</td>
+    </tr>
+    <tr>
+      <td><strong>Min-Occurrence für Keyword-Vorschläge</strong></td>
+      <td><strong>(a)</strong> ≥ 1 distinct file. Plus Leitprinzip: <em>„lieber mehr zensieren als weniger"</em>.</td>
+      <td>Jeder gefundene PERSON/ORG-Hit wird vorgeschlagen — auch wenn nur in einem File. Mehr Review-Aufwand, aber keine False-Negatives. Beim Review entscheidet User pro Eintrag (y/n/s/q). „Mehr Redaction kann nicht schaden" ist Default-Haltung.</td>
+    </tr>
+    <tr>
+      <td><strong>Entity-Types für Keyword-Stream</strong></td>
+      <td><strong>(c)</strong> PERSON, ORGANIZATION, LOCATION, URL — via GLiNER. <strong>Email, IP, Hostnames, Secrets, Passwords:</strong> via <em>kombiniertem</em> Pfad — Regex für deterministische Fälle (feste Prefixes, bekannte TLDs), GLiNER für generische / kontext-sensitive Fälle.</td>
+      <td>Siehe §B.3 für die GLiNER-Label-Architektur. Regex bleibt First-Line (schnell, deterministisch), GLiNER deckt die Lücken ab (semantisch, kontext-aware).</td>
+    </tr>
+    <tr>
+      <td><strong>Provenance-Tiefe</strong></td>
+      <td><strong>(d)</strong> Gestaffelt: (a) sofort als Nebenprodukt von Phase 6, (b) explain-Subcommand mit Phase 6d zusammen, (c) Phase 8 später bei Bedarf.</td>
+      <td>State-File trackt eh Zeilen/Quellen für Decision-Tracking → ~200 LOC für Audit-Log-Erweiterung fällt mit Phase 6 raus. <code>explain &lt;path&gt;</code> kommt direkt mit. <code>explain &lt;text&gt;</code> + Audit-Filter kommen später.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>B.2 Keyword-Normalisierung &amp; Dedup</h3>
+
+<p>Klarstellung vom User für Phase 6b:</p>
+
+<ul>
+  <li><strong>Storage</strong>: Keywords werden bei automatischem Append durch <code>classify-merge</code> als <em>lowercase</em> in <code>~/.redactorignore</code> geschrieben.</li>
+  <li><strong>Match-Verhalten</strong>: case-insensitive (existiert bereits via <code>(?i)</code>-Regex-Prefix).</li>
+  <li><strong>Dedup</strong>: vor dem Append wird case-insensitive gegen alle existierenden Keywords verglichen. <code>"Niclas Edge"</code>, <code>"niclas edge"</code>, <code>"NICLAS EDGE"</code> zählen als ein Keyword.</li>
+  <li><strong>Manuelle Edits respektieren</strong>: bestehende Einträge im File, die User manuell mit Mixed-Case eingegeben hat, werden NICHT normalisiert (nur bei Classifier-Auto-Append).</li>
+</ul>
+
+<pre><code>fn normalize_for_storage(text: &amp;str) -&gt; String {
+    text.trim().to_lowercase()
+}
+
+fn is_duplicate(candidate: &amp;str, existing: &amp;[String]) -&gt; bool {
+    let cand = candidate.trim().to_lowercase();
+    existing.iter().any(|e| e.trim().to_lowercase() == cand)
+}</code></pre>
+
+<h3>B.3 GLiNER-Label-Architektur: Document-Types + Entity-Types in einem Call</h3>
+
+<p>
+  <strong>Wichtige Architektur-Korrektur</strong> gegenüber §2.3 oben: GLiNER bekommt heute nur Document-Type-Labels aus <code>labels.txt</code> (<code>TAX_DOC</code>, <code>BANK_STATEMENT</code>, …). Das Modell findet damit nur Document-Type-Spans — <em>keine</em> <code>PERSON</code>/<code>ORG</code>/<code>EMAIL</code>-Spans, weil die nicht in der Label-Liste stehen.
+</p>
+
+<p>Für die Keyword-Pipeline muss der Label-Set <em>kombiniert</em> werden:</p>
+
+<pre><code># classifier-py — labels.txt erweitert (zwei Sektionen)
+
+# === Document-Type Labels (Pfad-Vorschlag, File-Confidence) ===
+TAX_DOC
+BANK_STATEMENT
+PERSONAL_RECORD
+CREDENTIAL
+PRIVATE_KEY
+MEDICAL_RECORD
+LEGAL_DOC
+PASSWORD_VAULT
+CUSTOMER_DATA
+EMPLOYEE_RECORD
+
+# === Entity-Type Labels (Keyword-Vorschläge) ===
+# Diese werden nicht in die File-Confidence aggregiert, sondern in den Keyword-Stream geleitet.
+PERSON
+ORGANIZATION
+LOCATION
+URL
+HOSTNAME
+PASSWORD
+SECRET
+API_KEY</code></pre>
+
+<p>
+  <strong>Aggregations-Logik</strong>: ein GLiNER-Call pro File mit kombiniertem Label-Set. Im Python-Sidecar trennt die Aggregation nach Label-Klasse:
+</p>
+
+<div class="mermaid">
+flowchart TD
+    F["File"] --> R{"Pre-Filter:<br/>geblockt?"}
+    R -->|"yes (Klasse A/B/C/D)"| Skip["skip"]
+    R -->|"no (allowed)"| RX["Regex-Pipeline<br/>(patterns.rs::defaults)"]
+    R -->|"no (allowed)"| GL["GLiNER mit kombiniertem<br/>Label-Set"]
+    RX --> RXOut["Pattern-Matches:<br/>direkt redacted in Output<br/>(kein Vorschlag-Step)"]
+    GL --> SPLIT{"Entity-Label?"}
+    SPLIT -->|"TAX_DOC, BANK_STMT,<br/>PERSONAL_RECORD, …"| DOC["Document-Type-Spans<br/>→ File-Confidence-Aggregation"]
+    SPLIT -->|"PERSON, ORG,<br/>LOCATION, URL"| ENT["Entity-Type-Spans<br/>→ Keyword-Kandidaten"]
+    SPLIT -->|"HOSTNAME, PASSWORD,<br/>SECRET, API_KEY"| HYB["Hybrid: zusätzlicher<br/>Keyword-Stream (low-recall<br/>Regex-Lücken füllen)"]
+    DOC --> PathSugg["~/.redactorignore.suggested<br/>(Pfade)"]
+    ENT --> KwSugg["~/.redactorignore.keywords.suggested<br/>(Keywords)"]
+    HYB --> KwSugg
+</div>
+
+<p>
+  <strong>Aggregations-Filter</strong> bei Entity-Type-Spans (Keyword-Stream): wie in §2.3 spezifiziert (Min-Score 0.7 senkbar wegen „mehr ist besser"-Haltung, Min-Länge ≥ 3, nicht-nur-Ziffern, case-insensitive Dedup gegen <code>~/.redactorignore</code>). <strong>Min-Occurrence-Filter entfällt</strong> bei „≥ 1 distinct file" — jeder Hit ist Kandidat.
+</p>
+
+<h3>B.4 Regex-Patterns (Phase 7e–7i)</h3>
+
+<table>
+  <thead><tr><th>Phase</th><th>Bereich</th><th>Aufwand</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>7e</strong> <span class="tag tag-new">NEU</span></td>
+      <td><strong>Office-Docs auch in Bash hard-blocken</strong>. <code>hook.rs::match_office_doc</code> wird von <code>pre-read</code>-only auf <code>pre-read</code> + <code>pre-bash</code> erweitert. Konsistenz mit Read-Block-Policy.</td>
+      <td>S (~80 LOC)</td>
+    </tr>
+    <tr>
+      <td><strong>7f</strong> <span class="tag tag-new">NEU</span></td>
+      <td><strong>Email-Pattern verifizieren / ergänzen.</strong> Audit von <code>patterns.rs::defaults()</code> ob ein Standard-Email-Pattern existiert. Wenn nicht: <code>email_address: r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b"</code> hinzufügen. Plus Tests gegen Real-World-Fälle (mit/ohne Quoting, Plus-Aliasse).</td>
+      <td>S (~50 LOC)</td>
+    </tr>
+    <tr>
+      <td><strong>7g</strong> <span class="tag tag-new">NEU</span></td>
+      <td><strong>Public-IP-Pattern erweitern.</strong> Existierendes IPv4-Pattern (rred-2) filtert private IPs (10.x, 172.16-31.x, 192.168.x, 127.x). Erweitern für IPv6 + Public-IP-Default. <code>ipv4_public</code> + <code>ipv6_general</code> Regeln, beide mit Private-Filter im Code.</td>
+      <td>S (~120 LOC)</td>
+    </tr>
+    <tr>
+      <td><strong>7h</strong> <span class="tag tag-new">NEU</span></td>
+      <td><strong>Internal-Hostname-Patterns.</strong> Hostnames mit bekannten internen TLDs: <code>*.corp</code>, <code>*.intern</code>, <code>*.local</code>, <code>*.lan</code>, <code>*.home.arpa</code>, NetBIOS-Style (1-15 Zeichen, keine Punkte). Plus Heuristik für „klingt nach internem Hostname" (Hostname-Tokens vor Whitespace, mit <code>vmw</code>/<code>srv</code>/<code>dc</code>-Präfix). <strong>Hybrid mit GLiNER</strong>: Regex fängt die deterministischen Fälle, GLiNER-<code>HOSTNAME</code>-Label deckt freie Formen ab.</td>
+      <td>M (~250 LOC)</td>
+    </tr>
+    <tr>
+      <td><strong>7i</strong> <span class="tag tag-new">NEU</span></td>
+      <td><strong>Secret/Password-Pattern-Audit + Erweiterung.</strong> Audit existierende Patterns gegen Lücken (Slack <code>xoxb-</code>/<code>xoxp-</code>, Stripe <code>sk_live_</code>/<code>pk_live_</code>, DB-Connection-Strings <code>postgres://</code>/<code>mongodb://</code>, generische Felder <code>password=</code>/<code>secret=</code>/<code>token=</code>/<code>api_key=</code>). <strong>Hybrid mit GLiNER</strong>: Regex für die ~15-20 bekannten Konventionen, GLiNER-<code>PASSWORD</code>/<code>SECRET</code>/<code>API_KEY</code>-Labels fangen kontext-sensitive Cases (z.B. random-32-char-string nach <code>password = </code> in PowerShell-File).</td>
+      <td>M (~300 LOC, hängt vom Audit-Ergebnis ab)</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout tradeoff">
+  <h4>Regex vs. GLiNER — Verteilung</h4>
+  <p>
+    Regex ist <strong>deterministisch, schnell, lückenlos</strong> — solange das Muster fest ist. GLiNER ist <strong>kontext-sensitiv, langsam, recall-getrieben</strong> — fängt Cases ab, die Regex nicht sehen kann. Beide laufen parallel:
+  </p>
+  <ul>
+    <li>Regex-Hits → direkt redacted in Tool-Output (Pattern-Mode in <code>redactor.rs</code>). Kein Vorschlags-Step nötig.</li>
+    <li>GLiNER-Entity-Hits (HOSTNAME/PASSWORD/SECRET) → in den Keyword-Vorschlag-Stream, weil sie kontext-abhängig sind und User-Review verdienen.</li>
+  </ul>
+  <p>So bleibt Regex-Pipeline schnell (Auto-Redaction), und GLiNER bringt zusätzliche Recall für die Edge-Cases.</p>
+</div>
+
+<h3>B.5 Provenance — gestaffelt (B.5a in Phase 6, B.5b in Phase 6d, B.5c später)</h3>
+
+<h4>B.5a — Block-Reason mit Source-Info (sofort, ~200 LOC)</h4>
+<p>Erweitert die existierenden Block-Reason-Strings im Hook:</p>
+<pre><code>// Vorher
+"path is on the user's .redactorignore list"
+
+// Nachher
+"path is on the user's .redactorignore list (line 42: '~/Documents/Steuer/**')"
+
+// Audit-Log bekommt zwei zusätzliche Spalten
+timestamp  source=…  command=…  mode=…  rule=…  count=N  sample=…  origin=user_keyword  origin_ref=~/.redactorignore:8</code></pre>
+
+<h4>B.5b — <code>redactor explain &lt;path&gt;</code> Subcommand (Phase 6d, ~250 LOC)</h4>
+<pre><code>$ redactor explain "/Users/alice/Documents/Steuer/2024/erklaerung.pdf"
+
+block source       rule/line                       category
+─────────────────  ──────────────────────────────  ─────────────────
+path-guard         ~/.redactorignore:42            user_path
+                   ~/Documents/Steuer/**
+
+$ redactor explain "C:\Users\niclas.edge\foo.pfx"
+
+block source       rule/line                       category
+─────────────────  ──────────────────────────────  ─────────────────
+crypto-container   hook.rs::match_crypto_container hardcoded
+                   .pfx (PKCS#12)</code></pre>
+
+<h4>B.5c — <code>redactor explain "&lt;text&gt;"</code> + Audit-Filter (Phase 8, optional)</h4>
+<pre><code># Welche Pattern-Rule würde diesen String redacten?
+$ redactor explain "TenantId=12345678-1234-1234-1234-123456789012"
+
+# Audit-Log nach Rule filtern
+$ redactor audit --rule azure_cred_guid --since 7d</code></pre>
+</section>
+
+<section id="next">
+<h2><span class="num">§N</span>Next Steps</h2>
+
+<h3>N.1 Reihenfolge der Umsetzung (empfohlen)</h3>
+
+<ol>
+  <li>
+    <strong>Phase 7a-d</strong> (Pattern-Gaps aus echtem Einsatz):
+    sofortiger Security-Nutzen, klein. <code>crypto_container_path</code>,
+    PSD1-Patterns, Username-Maskierung, Path-Guard-Smartness.
+  </li>
+  <li>
+    <strong>Phase 7e</strong> (Office-Docs auch in Bash blocken):
+    Konsistenz-Fix, sehr klein. Vor 7a-d machbar.
+  </li>
+  <li>
+    <strong>Phase 7f-i</strong> (Regex-Patterns für Email/IP/Hostname/Secrets):
+    Audit existierender Patterns, ergänzen wo Lücken. Mittel.
+  </li>
+  <li>
+    <strong>Phase 6a</strong> (State-File + Hash-Cache):
+    Fundament für Inkrementalität. Mittel.
+  </li>
+  <li>
+    <strong>Phase 6b</strong> (Keyword-Output-Stream):
+    Erweitert <code>labels.txt</code>, neuer Aggregations-Pfad,
+    Lowercase-Normalisierung, Dedup.
+  </li>
+  <li>
+    <strong>Phase 6c</strong> (Decision-Memory in classify-merge):
+    Strict-Memory persistieren. Klein.
+  </li>
+  <li>
+    <strong>Phase 6d</strong> (Provenance Stufe B.5b — <code>explain &lt;path&gt;</code>):
+    Direkter Anwender-Nutzen, baut auf State-File aus 6a auf.
+  </li>
+  <li>
+    <strong>Phase 8</strong> (Provenance Stufe B.5c, optional):
+    erst wenn Praxis zeigt, wo Audit-Tooling fehlt.
+  </li>
+</ol>
+
+<h3>N.2 Konkrete erste Schritte</h3>
+
+<ol>
+  <li>Schließen offener TBD-Punkte:
+    <ul>
+      <li>Hash-Algorithmus festlegen: <strong>SHA-256</strong> (Standard, vertraut, ~10 ms pro File akzeptabel)</li>
+      <li>GLiNER-Label-Set: zweisektion ergänzen in <code>classifier-py/defaults/labels.txt</code>, Migration-Helper in Phase 6b</li>
+      <li>State-File-Location: <code>&lt;config&gt;/classifier/state.json</code> (überlebt <code>classifier-uninstall</code> nicht, würde verloren gehen — Alternative: <code>&lt;config&gt;/state.json</code> außerhalb des Classifier-Trees)</li>
+    </ul>
+  </li>
+  <li>
+    Spec-Doc aktualisieren mit dieser Section (erledigt am 2026-05-13).
+  </li>
+  <li>
+    <code>superpowers:writing-plans</code> Skill aufrufen, um aus Phasen
+    7a, 7b, 7c, 7d, 7e, 7f, 7g, 7h, 7i, 6a, 6b, 6c, 6d konkrete TaskMD-Tasks
+    mit Dependencies und Akzeptanzkriterien zu generieren. Pfad:
+    <code>knowledge/plans/2026-05-13-classifier-tasks/</code>.
+  </li>
+  <li>
+    Vor Implementierung: kurze Verifikation, dass die Audit-Befunde aus 7f-i
+    nicht doppelt sind (z.B. Email-Pattern könnte schon existieren —
+    Grep durch <code>patterns.rs::defaults</code> vor Phase 7f).
+  </li>
+</ol>
+
+<h3>N.3 Was im Spec-Doc <em>NICHT</em> geändert wurde</h3>
+
+<p>Die folgenden Sub-Aussagen aus §2-§5 oben sind durch §B überschrieben oder ergänzt — bitte §B als Single-Source-of-Truth nehmen:</p>
+
+<table>
+  <thead><tr><th>Wo im Doc</th><th>Alt</th><th>Neu (laut §B)</th></tr></thead>
+  <tbody>
+    <tr><td>§2.3 Keyword-Pipeline Min-Score</td><td>0.85</td><td>0.7 (paranoid-default)</td></tr>
+    <tr><td>§2.3 Keyword-Pipeline Min-Occurrence</td><td>≥ 2 distinct files</td><td>≥ 1 distinct file (Filter entfällt)</td></tr>
+    <tr><td>§2.3 Entity-Type-Whitelist</td><td>PERSON, ORGANIZATION, EMAIL, LOCATION</td><td>PERSON, ORG, LOCATION, URL — plus HOSTNAME/PASSWORD/SECRET/API_KEY (separat aggregiert)</td></tr>
+    <tr><td>§5.3 F3 Username-Maskierung</td><td>Default-on, opt-out</td><td>Unverändert — passt zur „mehr ist besser"-Haltung</td></tr>
+    <tr><td>§5.2 F2 PSD1</td><td>Read-Block bei Filename-Match auf <code>auth|cred|secret|key</code></td><td>Erweitert: alle <code>.psd1</code>-Files Read+Bash hardcoded blocken? Offen — siehe §? offene Punkte unten</td></tr>
+  </tbody>
+</table>
+
+<h3>N.4 Verbleibende offene TBD</h3>
+
+<ol>
+  <li><strong>State-File-Persistenz über <code>classifier-uninstall</code>:</strong> sollte das State-File die Decision-History behalten, auch wenn der User den Sidecar deinstalliert + reinstalliert? Mein Vorschlag: ja — State-File nach <code>&lt;config&gt;/state.json</code> verschieben (außerhalb von <code>&lt;config&gt;/classifier/</code>), damit es Uninstall überlebt.</li>
+  <li><strong>PSD1-Default-Block:</strong> jede <code>.psd1</code> Read+Bash blocken (consistent mit Office-Docs-Policy) oder nur die mit Auth-Filename-Heuristik?</li>
+  <li><strong>GLiNER-Label-Confusion:</strong> wenn der Label-Set sowohl Document-Type-Labels (<code>TAX_DOC</code>) als auch Entity-Type-Labels (<code>PERSON</code>) enthält, könnten Inference-Recall sinken (GLiNER muss zwischen Labels disambiguieren). Empirisch testen mit Fixture-Korpus in Phase 6b.</li>
+  <li><strong>Encoding bei <code>.psd1</code>-Files:</strong> PowerShell-Files können UTF-16 sein. Content-Preview-Logik muss BOM-aware sein.</li>
+</ol>
+</section>
+
+<hr class="section-end">
+
+<div class="footer-meta">
+  <p>
+    <strong>Datei:</strong> <code>knowledge/plans/2026-05-13-classifier-keywords-incremental-and-pattern-gaps.html</code><br>
+    <strong>Vorgänger-Spec:</strong> <code>2026-05-12-redactorignore-and-classifier-design.html</code> (v0.7 Foundation)<br>
+    <strong>Trigger:</strong> Echter Einsatz auf Windows 11 am 2026-05-13 + Beobachtungen F1/F2/F3/F4/F5/F6.<br>
+    <strong>Brainstorming:</strong> 2026-05-13 abgeschlossen, sechs Entscheidungen in §B konsolidiert.<br>
+    <strong>Next step:</strong> <code>superpowers:writing-plans</code> Skill aufrufen, um Phasen 7a-i + 6a-d in konkrete TaskMD-Tasks aufzubrechen.
+  </p>
+</div>
+
+</main>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    themeVariables: {
+      fontFamily: 'JetBrains Mono, SF Mono, Menlo, monospace',
+      fontSize: '13px',
+      primaryColor: '#fbfbfa',
+      primaryTextColor: '#1c1c1c',
+      primaryBorderColor: '#1c1c1c',
+      lineColor: '#5a5a5a',
+      secondaryColor: '#dbeafe',
+      tertiaryColor: '#ffffff'
+    },
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence:  { useMaxWidth: true, showSequenceNumbers: false }
+  });
+</script>
+</body>
+</html>

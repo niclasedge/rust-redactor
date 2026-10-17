@@ -1,0 +1,15 @@
+# <config>/classifier/config.toml
+#
+# Edit to swap models or pin a device. Re-run `redactor classifier-install`
+# after changing model identifiers — the new model has to be downloaded.
+
+[model]
+gliner   = "urchade/gliner_multi_pii-v1"   # multilingual PII GLiNER model
+spacy_de = "de_core_news_sm"
+spacy_en = "en_core_web_sm"
+device   = "auto"                          # auto | cpu | mps | cuda
+
+[scan]
+# Default content-preview length passed to the sidecar (bytes). Keep small —
+# longer previews increase per-file latency without much classifier gain.
+preview_bytes = 4096

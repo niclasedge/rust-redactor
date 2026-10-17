@@ -1,0 +1,238 @@
+// rust-redactor — Zielzustand v2 (refactored, deduplicated)
+// Alle Hook-Logik ins Rust-Binary konsolidiert via `redactor hook <event>`.
+// Bash-Scripts und jq-Dependency entfallen. settings.json ruft das Binary direkt.
+//
+// Diff zu v1 (target):
+//   • .claude/hooks/*.sh                  -> entfernt
+//   • bash + jq Pflicht-Deps              -> entfallen
+//   • redactor binary bekommt 5 hook-subcommands + 4 cli-subcommands
+//   • Pattern-Engine, Config, FP-Filter   -> intern, eine Stelle
+//
+// Render: dot -Tpng redactor-hooks-target-v2.dot -o redactor-hooks-target-v2.png
+
+digraph redactor_target_v2 {
+    rankdir=LR;
+    fontname="Inter,Helvetica,sans-serif";
+    fontsize=11;
+    labelloc=t;
+    label=<<b>rust-redactor — Zielzustand v2 (Hooks ins Binary konsolidiert)</b><br/>
+            <font point-size="9">Keine Bash-Scripts, keine jq-Dep · alles via <font face="Consolas">redactor hook &lt;event&gt;</font></font>>;
+    compound=true;
+    splines=spline;
+
+    node [fontname="Inter,Helvetica,sans-serif", fontsize=10, style="rounded,filled", shape=box];
+    edge [fontname="Inter,Helvetica,sans-serif", fontsize=9];
+
+    // ───── Use-Case-Quellen ─────
+    subgraph cluster_input {
+        label="USER / CLAUDE — Tool-Aufrufe";
+        labeljust=l;
+        bgcolor="#f7f7f9";
+        style="filled,rounded";
+        color="#dddddd";
+        node [fillcolor="#ffffff"];
+
+        uc_prompt   [label="UserPrompt\n(beliebiger Text)"];
+        uc_read     [label="Read\n(beliebiger Pfad)"];
+        uc_bash     [label="Bash\n(beliebiger Command)"];
+        uc_write    [label="Write / Edit"];
+        uc_session  [label="SessionStart\n(Repo geöffnet)"];
+        uc_cli      [label="CLI direct\nredactor scan / clean / mock\n/ install-hooks / self-update / wrap / --type X"];
+    }
+
+    // ───── Settings.json: Single Routing-Layer ─────
+    subgraph cluster_routing {
+        label="settings.json — Hook Routing (one-liner per slot)";
+        labeljust=l;
+        bgcolor="#fff8e0";
+        style="filled,rounded";
+        color="#d8b850";
+        node [fillcolor="#ffeeaa", color="#a87f1f", shape=note];
+
+        rt_prompt  [label="\"command\": \"redactor hook prompt\""];
+        rt_pre_b   [label="\"command\": \"redactor hook pre-tool-bash\""];
+        rt_pre_r   [label="\"command\": \"redactor hook pre-tool-read\""];
+        rt_pre_w   [label="\"command\": \"redactor hook pre-write\""];
+        rt_post    [label="\"command\": \"redactor hook post-tool\""];
+        rt_session [label="\"command\": \"redactor hook session-start\""];
+    }
+
+    // ───── REDACTOR BINARY (single source of truth) ─────
+    subgraph cluster_binary {
+        label="REDACTOR BINARY (Rust, single source of truth)";
+        labeljust=l;
+        bgcolor="#eef4ff";
+        style="filled,rounded";
+        color="#4a7fcf";
+        penwidth=2;
+
+        // Hook subcommands (replace 5 Bash scripts)
+        subgraph cluster_hookcmds {
+            label="hook subcommands (Phase 0)";
+            labeljust=l;
+            bgcolor="#dce8ff";
+            style="filled,rounded";
+            color="#6b8ccf";
+            node [fillcolor="#cfe0ff", color="#4a7fcf"];
+
+            hk_prompt  [label="hook prompt\n• scan(prompt) → block on hit"];
+            hk_pre_b   [label="hook pre-tool-bash\n• path-guard\n• require ^redactor\n• block struct-file via wrap\n• network-guard (Phase 4)"];
+            hk_pre_r   [label="hook pre-tool-read\n• path-guard\n• block jeden Read\n• redirect zu --type"];
+            hk_pre_w   [label="hook pre-write\n• path-guard\n(Phase 4: post-write-validate)"];
+            hk_post    [label="hook post-tool\n• mode-detect (json/csv/env/pattern)\n• skip direct redactor calls\n• block on diff"];
+            hk_session [label="hook session-start\n• scan CLAUDE.md\n• warn on PII (Phase 4)"];
+        }
+
+        // CLI workflow tools (Phase 3)
+        subgraph cluster_cli {
+            label="cli subcommands (Phase 3)";
+            labeljust=l;
+            bgcolor="#d4f0db";
+            style="filled,rounded";
+            color="#3a8b5a";
+            node [fillcolor="#e0f6e6", color="#3a8b5a"];
+
+            cli_scan  [label="scan <file>\n→ JSONL findings"];
+            cli_clean [label="clean <file>\n→ *.clean"];
+            cli_mock  [label="mock <file>\n→ schema-inferred"];
+            cli_inst  [label="install-hooks\n→ writes settings.json"];
+            cli_self  [label="self-update\n→ pulls latest release"];
+            cli_wrap  [label="wrap -- <cmd>\n(line-buffered pattern mode)"];
+            cli_ftype [label="--type X <file>\n(structural mode)"];
+        }
+
+        // Shared core (Phase 1+2)
+        subgraph cluster_core {
+            label="shared core (Phase 1 + 2)";
+            labeljust=l;
+            bgcolor="#fff0e0";
+            style="filled,rounded";
+            color="#cc8a3d";
+            node [fillcolor="#ffe9c2", color="#a87a2c"];
+
+            core_eng [label="Pattern Engine\n• API-Keys (sk-/AKIA/ghp/JWT/PEM)\n• EU-PII (IBAN/Telefon/Geburt/SVN)\n• IPv4 + private-IP filter\n• Connection-Strings\n• Azure GUIDs\n• Cert-Thumbprint / ClientSecret\n• False-Positive filter"];
+            core_cfg [label=".redactor.toml loader\n• cwd up the tree\n• pattern overrides\n• whitelist overrides\n• mode overrides per ext"];
+            core_log [label="Audit-Log\n→ JSONL (jq/Splunk-friendly)"];
+            core_modes [label="Mode dispatcher\n• auto / pattern\n• json / csv / env\n(structural redaction)"];
+        }
+    }
+
+    // ───── Outcomes ─────
+    subgraph cluster_out {
+        label="OUTCOME";
+        labeljust=l;
+        bgcolor="#f4faf4";
+        style="filled,rounded";
+        color="#bcd9bc";
+
+        out_block_secret [label="BLOCK\nprompt (redacted preview)",     fillcolor="#ffd6d6", color="#cc4040"];
+        out_block_path   [label="BLOCK\nsensitive path",                fillcolor="#ffd6d6", color="#cc4040"];
+        out_block_read   [label="BLOCK\n→ use redactor --type",         fillcolor="#ffd6d6", color="#cc4040"];
+        out_block_bare   [label="BLOCK\n→ use redactor wrap or direct", fillcolor="#ffd6d6", color="#cc4040"];
+        out_block_struct [label="BLOCK\n→ use --type for *.json/csv/env", fillcolor="#ffd6d6", color="#cc4040"];
+        out_block_url    [label="BLOCK\nDomain not whitelisted",        fillcolor="#ffd6d6", color="#cc4040"];
+        out_san_inline   [label="SANITIZED stdout\n(UI + Model gleich)",fillcolor="#ffe4b8", color="#cc8a3d"];
+        out_san_pattern  [label="SANITIZED stdout\n(secrets <redacted>)",fillcolor="#ffe4b8", color="#cc8a3d"];
+        out_warn_session [label="WARNUNG\nCLAUDE.md enthält PII",       fillcolor="#fff4cc", color="#b89234"];
+        out_block_lint   [label="BLOCK\nlint/syntax error",             fillcolor="#ffd6d6", color="#cc4040"];
+        out_allow        [label="ALLOW",                                fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_audit_jsonl  [label="JSONL findings\n(audit pipeline)",     fillcolor="#d8e4ff", color="#4a6db0"];
+        out_clean_f      [label="*.clean (anonym)",                     fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_mock_f       [label="mock_*.csv",                           fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_settings     [label="settings.json updated\n(no .sh files)",fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_updated      [label="Binary updated",                       fillcolor="#d6f5d6", color="#3a8b3a"];
+    }
+
+    // ───── Distribution ─────
+    subgraph cluster_dist {
+        label="DISTRIBUTION (Phase 5)";
+        labeljust=l;
+        bgcolor="#fff4f4";
+        style="filled,rounded";
+        color="#e8b0b0";
+        node [fillcolor="#ffe0e0", color="#c25050"];
+
+        d_ci  [label="GitHub Actions matrix\nwin / linux / mac"];
+        d_rel [label="signed releases\n+ checksums"];
+    }
+
+    // ═════════════════════════════════════════════════
+    // EDGES
+    // ═════════════════════════════════════════════════
+
+    // User actions → settings.json route
+    uc_prompt   -> rt_prompt;
+    uc_bash     -> rt_pre_b;
+    uc_read     -> rt_pre_r;
+    uc_write    -> rt_pre_w;
+    uc_bash     -> rt_post  [style=dashed, label="post-event"];
+    uc_read     -> rt_post  [style=dashed, label="post-event"];
+    uc_session  -> rt_session;
+    uc_cli      -> cli_scan  [style=dashed];
+    uc_cli      -> cli_clean [style=dashed];
+    uc_cli      -> cli_mock  [style=dashed];
+    uc_cli      -> cli_inst  [style=dashed];
+    uc_cli      -> cli_self  [style=dashed];
+    uc_cli      -> cli_wrap  [style=dashed];
+    uc_cli      -> cli_ftype [style=dashed];
+
+    // Routing → hook subcommand
+    rt_prompt  -> hk_prompt;
+    rt_pre_b   -> hk_pre_b;
+    rt_pre_r   -> hk_pre_r;
+    rt_pre_w   -> hk_pre_w;
+    rt_post    -> hk_post;
+    rt_session -> hk_session;
+
+    // Hook subcommands use the shared core
+    hk_prompt -> core_eng [style=dashed, color="#a87a2c"];
+    hk_post   -> core_modes [style=dashed, color="#a87a2c"];
+    hk_post   -> core_eng [style=dashed, color="#a87a2c"];
+    hk_session -> core_eng [style=dashed, color="#a87a2c"];
+
+    // CLI also uses shared core
+    cli_scan  -> core_eng [style=dashed, color="#a87a2c"];
+    cli_clean -> core_modes [style=dashed, color="#a87a2c"];
+    cli_mock  -> core_modes [style=dashed, color="#a87a2c"];
+    cli_wrap  -> core_eng [style=dashed, color="#a87a2c"];
+    cli_ftype -> core_modes [style=dashed, color="#a87a2c"];
+
+    // Config feeds engine + post-tool dispatcher
+    core_cfg -> core_eng [style=dashed, color="#cc8a3d", label="overrides"];
+    core_cfg -> core_modes [style=dashed, color="#cc8a3d", label="ext→mode"];
+    core_cfg -> hk_pre_b [style=dashed, color="#cc8a3d", label="whitelist"];
+    core_cfg -> hk_pre_r [style=dashed, color="#cc8a3d", label="whitelist"];
+
+    // Engine writes audit log
+    core_eng -> core_log [style=dashed, color="#a87a2c", label="every match"];
+    core_log -> out_audit_jsonl [color="#4a6db0"];
+
+    // Hook outcomes
+    hk_prompt  -> out_block_secret [color="#cc4040"];
+    hk_prompt  -> out_allow        [color="#3a8b3a"];
+    hk_pre_b   -> out_block_path   [color="#cc4040"];
+    hk_pre_b   -> out_block_bare   [color="#cc4040"];
+    hk_pre_b   -> out_block_struct [color="#cc4040"];
+    hk_pre_b   -> out_block_url    [color="#cc4040"];
+    hk_pre_b   -> out_allow        [color="#3a8b3a"];
+    hk_pre_r   -> out_block_path   [color="#cc4040"];
+    hk_pre_r   -> out_block_read   [color="#cc4040"];
+    hk_pre_w   -> out_block_lint   [color="#cc4040"];
+    hk_pre_w   -> out_allow        [color="#3a8b3a"];
+    hk_post    -> out_san_inline   [color="#cc8a3d"];
+    hk_post    -> out_san_pattern  [color="#cc8a3d"];
+    hk_post    -> out_allow        [color="#3a8b3a"];
+    hk_session -> out_warn_session [color="#b89234"];
+    hk_session -> out_allow        [color="#3a8b3a"];
+
+    // CLI outcomes
+    cli_scan  -> out_audit_jsonl [color="#4a6db0"];
+    cli_clean -> out_clean_f     [color="#3a8b3a"];
+    cli_mock  -> out_mock_f      [color="#3a8b3a"];
+    cli_inst  -> out_settings    [color="#3a8b3a"];
+    cli_self  -> out_updated     [color="#3a8b3a"];
+
+    // Distribution
+    d_ci  -> d_rel;
+    cli_self -> d_rel [style=dashed, label="GET /releases/latest"];
+}

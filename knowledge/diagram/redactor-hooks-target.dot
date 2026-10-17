@@ -1,0 +1,233 @@
+// rust-redactor — Zielzustand (alle 27 Tasks aus rust-redactor/* implementiert)
+// Erweitert den aktuellen Stand um:
+//   Phase 1 (patterns):     EU-PII / IP / Connection-Strings / Azure-GUIDs / Cert-Thumbprint / FP-Filter
+//   Phase 2 (config):       .redactor.toml mit Pattern/Whitelist/Mode-Overrides
+//   Phase 3 (cli-tools):    redactor scan|clean|mock|install-hooks + JSONL audit log
+//   Phase 4 (hooks):        network-guard / post-write-validate / session-guard
+//   Phase 5 (distribution): CI matrix builds, releases, self-update
+//
+// Render: dot -Tpng redactor-hooks-target.dot -o redactor-hooks-target.png
+
+digraph redactor_target {
+    rankdir=LR;
+    fontname="Inter,Helvetica,sans-serif";
+    fontsize=11;
+    labelloc=t;
+    label=<<b>rust-redactor — Zielzustand (post Phase 1–5)</b><br/>
+            <font point-size="9">Neue Schutzschichten markiert mit <font color="#3a8b3a">★</font></font>>;
+
+    node [fontname="Inter,Helvetica,sans-serif", fontsize=10, style="rounded,filled", shape=box];
+    edge [fontname="Inter,Helvetica,sans-serif", fontsize=9];
+
+    // ───── Use-Case-Quellen (erweitert) ─────
+    subgraph cluster_input {
+        label="USER / CLAUDE — Tool-Aufrufe";
+        labeljust=l;
+        bgcolor="#f7f7f9";
+        style="filled,rounded";
+        color="#dddddd";
+        node [fillcolor="#ffffff"];
+
+        uc1  [label="Prompt mit Secret\nodersk-…/AKIA…/IBAN/Telefon/Geburt"];
+        uc2  [label="Prompt sauber"];
+        uc3  [label="Read → .env / *.pem / *.key"];
+        uc4  [label="Read → foo.json / data.csv / *.xml"];
+        uc5  [label="Read → Cargo.toml"];
+        uc6  [label="Bash → cat foo.txt (bare)"];
+        uc7  [label="Bash → wrap+cat foo.json"];
+        uc8  [label="Bash → wrap on foo.log"];
+        uc9  [label="Bash → redactor --type X file"];
+        uc10 [label="Bash → curl https://evil.com/x", fillcolor="#fff0f0"];
+        uc11 [label="Write → main.py mit Syntax-Fehler", fillcolor="#fff0f0"];
+        uc12 [label="SessionStart\n(Claude Code öffnet Repo)", fillcolor="#fff0f0"];
+        uc13 [label="redactor scan suspect.json\n(Audit-Mode)", fillcolor="#f0fff0"];
+        uc14 [label="redactor clean kunden.csv\n→ kunden.csv.clean", fillcolor="#f0fff0"];
+        uc15 [label="redactor mock customer.csv\n→ mock_customer.csv", fillcolor="#f0fff0"];
+        uc16 [label="redactor install-hooks ./projekt", fillcolor="#f0fff0"];
+        uc17 [label="redactor self-update", fillcolor="#f0fff0"];
+    }
+
+    // ───── Erweiterte Pattern-Engine ─────
+    subgraph cluster_engine {
+        label="REDACTOR PATTERN ENGINE (Phase 1 ★)";
+        labeljust=l;
+        bgcolor="#fffaf2";
+        style="filled,rounded";
+        color="#e6c890";
+        node [fillcolor="#ffe9c2", color="#a87a2c"];
+
+        eng_secrets [label="API-Keys / Tokens\n(sk-, AKIA, ghp_, JWT, PEM, Slack, Stripe)"];
+        eng_eu      [label="★ EU-PII\nIBAN / Telefon DE / Geburtsdatum / SVN"];
+        eng_ip      [label="★ IPv4 ext\n(10/172.16-31/192.168/127 ausgenommen)"];
+        eng_conn    [label="★ Connection-Strings\npostgres:// mysql:// mongodb:// redis:// amqp://"];
+        eng_azure   [label="★ Azure GUIDs\nTenant/Client/App/Object/Subscription/DirectoryId"];
+        eng_cert    [label="★ Cert-Thumbprint + ClientSecret\n40-hex / key=value"];
+        eng_fp      [label="★ False-Positive Filter\nexample.com / localhost / DE00... / private IPs"];
+    }
+
+    // ───── Per-Project Config (Phase 2) ─────
+    subgraph cluster_cfg {
+        label="CONFIG (Phase 2 ★)";
+        labeljust=l;
+        bgcolor="#f4f0ff";
+        style="filled,rounded";
+        color="#b09fd9";
+        node [fillcolor="#e3d8ff", color="#7558a8"];
+
+        cfg_toml [label="★ .redactor.toml\n(Discovery cwd up the tree)"];
+        cfg_pat  [label="★ Pattern-Override"];
+        cfg_wl   [label="★ Whitelist-Override"];
+        cfg_mode [label="★ Mode-Override\npro Extension"];
+    }
+
+    // ───── Hook-Schichten (erweitert) ─────
+    subgraph cluster_hooks {
+        label="HOOK-LAYERS (.claude/hooks)";
+        labeljust=l;
+        bgcolor="#eef4ff";
+        style="filled,rounded";
+        color="#aacaee";
+        node [fillcolor="#cfe0ff", color="#4a7fcf"];
+
+        h_prompt   [label="prompt-scan.sh\n[UserPromptSubmit]\nnutzt erweiterte Pattern"];
+        h_pathBash [label="path-guard.sh\n[PreToolUse / Bash]"];
+        h_pathRead [label="path-guard.sh\n[PreToolUse / Read]"];
+        h_bash     [label="bash-strict.sh\n[PreToolUse / Bash]"];
+        h_read     [label="read-strict.sh\n[PreToolUse / Read]"];
+        h_net      [label="★ network-guard.sh\n[PreToolUse / Bash]\nURL-Whitelist via\n.redactor-urls.json"];
+        h_post     [label="post-tool-redact.sh\n[PostToolUse]\nmode-aware: json/csv/env/pattern"];
+        h_pwv      [label="★ post-write-validate.sh\n[PostToolUse Write|Edit]\nruff / json / yaml syntax"];
+        h_session  [label="★ session-guard.sh\n[SessionStart]\nCLAUDE.md PII-Check"];
+    }
+
+    // ───── CLI Workflow Tools (Phase 3) ─────
+    subgraph cluster_cli {
+        label="CLI WORKFLOW TOOLS (Phase 3 ★)";
+        labeljust=l;
+        bgcolor="#f0fff5";
+        style="filled,rounded";
+        color="#a4d4b0";
+        node [fillcolor="#d4f0db", color="#3a8b5a"];
+
+        cli_scan  [label="★ redactor scan\n→ JSONL findings"];
+        cli_clean [label="★ redactor clean\n→ *.clean Variante"];
+        cli_mock  [label="★ redactor mock\n→ schema-inferred mock data"];
+        cli_inst  [label="★ redactor install-hooks\n→ deployt strict-redaction"];
+        cli_self  [label="★ redactor self-update\n→ pulls latest GH release"];
+    }
+
+    // ───── Distribution (Phase 5) ─────
+    subgraph cluster_dist {
+        label="DISTRIBUTION (Phase 5 ★)";
+        labeljust=l;
+        bgcolor="#fff4f4";
+        style="filled,rounded";
+        color="#e8b0b0";
+        node [fillcolor="#ffe0e0", color="#c25050"];
+
+        dist_ci   [label="★ GitHub Actions\nwin-msvc / linux-musl / mac-arm64+x86"];
+        dist_rel  [label="★ signed Releases\n+ checksums + auto-changelog"];
+    }
+
+    // ───── Outcomes ─────
+    subgraph cluster_out {
+        label="OUTCOME";
+        labeljust=l;
+        bgcolor="#f4faf4";
+        style="filled,rounded";
+        color="#bcd9bc";
+        node [shape=box, style="rounded,filled"];
+
+        block_secret [label="BLOCK\n+ redacted preview",                fillcolor="#ffd6d6", color="#cc4040"];
+        block_path   [label="BLOCK\n'sensitive path'",                  fillcolor="#ffd6d6", color="#cc4040"];
+        block_read   [label="BLOCK\n→ redirect to redactor --type X",   fillcolor="#ffd6d6", color="#cc4040"];
+        block_bare   [label="BLOCK\n'use redactor wrap --'",            fillcolor="#ffd6d6", color="#cc4040"];
+        block_struct [label="BLOCK\n'use direct file mode'",            fillcolor="#ffd6d6", color="#cc4040"];
+        block_url    [label="★ BLOCK\nDomain not whitelisted",          fillcolor="#ffd6d6", color="#cc4040"];
+        block_lint   [label="★ BLOCK\nlint/syntax error\n(Claude fixt)", fillcolor="#ffd6d6", color="#cc4040"];
+        warn_session [label="★ WARNUNG\nCLAUDE.md enthält PII",         fillcolor="#fff4cc", color="#b89234"];
+        san_inline   [label="SANITIZED stdout\nUI + Model gleich",      fillcolor="#ffe4b8", color="#cc8a3d"];
+        san_pattern  [label="SANITIZED stdout\nsecrets → <redacted>",   fillcolor="#ffe4b8", color="#cc8a3d"];
+        allow_clean  [label="ALLOW",                                    fillcolor="#d6f5d6", color="#3a8b3a"];
+        audit_jsonl  [label="★ JSONL findings\n→ audit pipeline",       fillcolor="#d8e4ff", color="#4a6db0"];
+        out_clean_f  [label="★ kunden.csv.clean\n(anonymisiert)",       fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_mock_f   [label="★ mock_customer.csv\n(generated)",         fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_hook_set [label="★ Hooks deployed\nin target .claude/",     fillcolor="#d6f5d6", color="#3a8b3a"];
+        out_updated  [label="★ Binary updated",                         fillcolor="#d6f5d6", color="#3a8b3a"];
+    }
+
+    // ───── Engine wird von Hooks UND CLI verwendet ─────
+    eng_secrets -> h_prompt    [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_eu      -> h_prompt    [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_ip      -> h_post      [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_conn    -> h_post      [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_azure   -> h_prompt    [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_cert    -> h_post      [color="#a87a2c", style=dashed, arrowhead=odot];
+    eng_fp      -> h_post      [color="#a87a2c", style=dashed, arrowhead=odot, label="filter"];
+
+    // Config feeds Engine + Hooks
+    cfg_toml -> cfg_pat;
+    cfg_toml -> cfg_wl;
+    cfg_toml -> cfg_mode;
+    cfg_pat  -> eng_secrets [color="#7558a8", style=dashed];
+    cfg_wl   -> h_pathRead  [color="#7558a8", style=dashed, label="exceptions"];
+    cfg_mode -> h_post      [color="#7558a8", style=dashed, label="ext→mode"];
+
+    // ───── Use-Case Edges ─────
+
+    // UserPromptSubmit
+    uc1 -> h_prompt;
+    uc2 -> h_prompt;
+    h_prompt -> block_secret [color="#cc4040"];
+    h_prompt -> allow_clean  [color="#3a8b3a"];
+
+    // Read paths
+    uc3 -> h_pathRead;
+    h_pathRead -> block_path [color="#cc4040"];
+    uc4 -> h_pathRead [style=dashed];
+    uc5 -> h_pathRead [style=dashed];
+    h_pathRead -> h_read [label="not sensitive"];
+    h_read -> block_read [color="#cc4040"];
+
+    // Bash paths
+    uc6 -> h_pathBash;
+    uc7 -> h_pathBash;
+    uc8 -> h_pathBash;
+    uc9 -> h_pathBash;
+    uc10 -> h_pathBash;
+
+    h_pathBash -> h_bash [label="path ok"];
+    h_bash -> block_bare   [color="#cc4040"];
+    h_bash -> block_struct [color="#cc4040"];
+    h_bash -> h_net        [label="^redactor"];
+    h_net  -> block_url    [color="#cc4040"];
+    h_net  -> h_post       [label="domain ok"];
+
+    // PostTool outcomes
+    h_post -> san_inline  [color="#cc8a3d"];
+    h_post -> san_pattern [color="#cc8a3d"];
+
+    // Write/Edit
+    uc11 -> h_pwv;
+    h_pwv -> block_lint [color="#cc4040"];
+
+    // SessionStart
+    uc12 -> h_session;
+    h_session -> warn_session [color="#b89234"];
+
+    // CLI tools
+    uc13 -> cli_scan;
+    cli_scan -> audit_jsonl;
+    uc14 -> cli_clean;
+    cli_clean -> out_clean_f;
+    uc15 -> cli_mock;
+    cli_mock -> out_mock_f;
+    uc16 -> cli_inst;
+    cli_inst -> out_hook_set;
+    uc17 -> cli_self;
+    cli_self -> dist_rel [style=dashed, arrowhead=odot, label="GET /releases/latest"];
+    cli_self -> out_updated;
+
+    // Distribution feeds CLI tools indirectly
+    dist_ci -> dist_rel [style=dashed];
+}

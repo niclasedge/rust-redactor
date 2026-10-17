@@ -1,0 +1,51 @@
+[project]
+name = "redactor-classify"
+version = "0.1.0"
+description = "Python sidecar for redactor's ML-based file classifier (Presidio + GLiNER)"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"   # spaCy 3.8.x has no cp314 wheels yet
+license = { text = "MIT" }
+authors = [{ name = "Niclas Edge" }]
+
+# Phase 3: skeleton only. The heavy ML deps are still pinned here so
+# `classifier-install` installs the right versions for Phase 4 — but
+# nothing in `src/classify/` imports them yet. The Phase-3 stub passes
+# pytest with zero runtime imports beyond the standard library.
+dependencies = [
+    "presidio-analyzer>=2.2.358",
+    "gliner>=0.2.13",
+    "spacy>=3.7,<4.0",
+    "torch>=2.1,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+]
+
+[project.scripts]
+redactor-classify = "classify.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/classify"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+# CPU-only torch — keeps the sidecar Mac/Linux/CI-friendly without
+# silently pulling in CUDA wheels. Apple Silicon falls through to the
+# MPS-aware build via the default index; this only forces CPU on Linux.
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

@@ -1,0 +1,72 @@
+{
+  "_comment": "Codex strict-redaction hook config. Place at <repo>/.codex/hooks.json or ~/.codex/hooks.json and enable [features].codex_hooks = true in the matching config.toml.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook session-start",
+            "statusMessage": "recording strict-redaction session start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook prompt",
+            "statusMessage": "scanning prompt for accidental secrets"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-bash",
+            "statusMessage": "checking bash command against redactor policy"
+          }
+        ]
+      },
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook pre-patch",
+            "statusMessage": "checking patch targets for sensitive paths"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook deny-mcp",
+            "statusMessage": "blocking MCP tools in strict-redaction mode"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "redactor hook post-write",
+            "statusMessage": "validating edited JSON/TOML files"
+          }
+        ]
+      }
+    ]
+  }
+}

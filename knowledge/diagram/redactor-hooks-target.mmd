@@ -1,0 +1,186 @@
+---
+title: rust-redactor — Zielzustand (alle 27 Tasks aus Phase 1–5 implementiert)
+config:
+  theme: neutral
+  flowchart:
+    curve: basis
+    htmlLabels: true
+---
+flowchart LR
+
+  %% ─── Klassen ───
+  classDef hook        fill:#cfe0ff,stroke:#4a7fcf,stroke-width:1.5px,color:#1a3a70
+  classDef hookNew     fill:#cfe0ff,stroke:#3a8b3a,stroke-width:2.5px,color:#1a3a70
+  classDef block       fill:#ffd6d6,stroke:#cc4040,stroke-width:1.5px,color:#7a1a1a
+  classDef warn        fill:#fff4cc,stroke:#b89234,stroke-width:1.5px,color:#5a4010
+  classDef sanitize    fill:#ffe4b8,stroke:#cc8a3d,stroke-width:1.5px,color:#5a3a10
+  classDef allow       fill:#d6f5d6,stroke:#3a8b3a,stroke-width:1.5px,color:#1a4a1a
+  classDef input       fill:#ffffff,stroke:#888,stroke-width:1px,color:#222
+  classDef inputNew    fill:#f0fff0,stroke:#3a8b3a,stroke-width:1.5px,color:#1a4a1a
+  classDef inputThreat fill:#fff0f0,stroke:#cc4040,stroke-width:1.5px,color:#7a1a1a
+  classDef engine      fill:#ffe9c2,stroke:#a87a2c,stroke-width:1.5px,color:#5a3a10
+  classDef engineNew   fill:#ffe9c2,stroke:#3a8b3a,stroke-width:2.5px,color:#5a3a10
+  classDef cfg         fill:#e3d8ff,stroke:#7558a8,stroke-width:1.5px,color:#3a1a5a
+  classDef cli         fill:#d4f0db,stroke:#3a8b5a,stroke-width:1.5px,color:#1a4a2a
+  classDef dist        fill:#ffe0e0,stroke:#c25050,stroke-width:1.5px,color:#5a1a1a
+
+  %% ─── Use-Cases (mit ★ für neu) ───
+  subgraph IN["USER / CLAUDE — Tool-Aufrufe"]
+    UC1["Prompt mit Secret/PII<br/>sk-… / AKIA / IBAN / Telefon / Geburt"]:::input
+    UC2["Prompt sauber"]:::input
+    UC3["Read .env / *.pem / *.key"]:::input
+    UC4["Read foo.json / data.csv / *.xml"]:::input
+    UC5["Read Cargo.toml"]:::input
+    UC6["Bash: cat foo.txt &#40;bare&#41;"]:::input
+    UC7["Bash: wrap+cat foo.json"]:::input
+    UC8["Bash: wrap on foo.log"]:::input
+    UC9["Bash: redactor --type X file"]:::input
+    UC10["★ Bash: curl https://evil.com/x"]:::inputThreat
+    UC11["★ Write: main.py mit Syntax-Error"]:::inputThreat
+    UC12["★ SessionStart<br/>&#40;Claude Code öffnet Repo&#41;"]:::inputThreat
+    UC13["★ redactor scan suspect.json"]:::inputNew
+    UC14["★ redactor clean kunden.csv"]:::inputNew
+    UC15["★ redactor mock customer.csv"]:::inputNew
+    UC16["★ redactor install-hooks ./projekt"]:::inputNew
+    UC17["★ redactor self-update"]:::inputNew
+  end
+
+  %% ─── Erweiterte Pattern-Engine ───
+  subgraph ENG["REDACTOR PATTERN ENGINE — Phase 1 ★"]
+    E_SEC["API-Keys / Tokens<br/>sk- / AKIA / ghp_ / JWT / PEM / Slack / Stripe"]:::engine
+    E_EU["★ EU-PII<br/>IBAN / Telefon DE / Geburtsdatum / SVN"]:::engineNew
+    E_IP["★ IPv4 ext<br/>10/172.16-31/192.168/127 ausgenommen"]:::engineNew
+    E_CONN["★ Connection-Strings<br/>postgres:// mysql:// mongodb:// redis:// amqp://"]:::engineNew
+    E_AZ["★ Azure-GUIDs<br/>Tenant/Client/App/Object/Subscription/DirectoryId"]:::engineNew
+    E_CERT["★ Cert-Thumbprint + ClientSecret<br/>40-hex / key=value"]:::engineNew
+    E_FP["★ False-Positive-Filter<br/>example.com / DE00... / private IPs"]:::engineNew
+  end
+
+  %% ─── Per-Project Config (Phase 2) ───
+  subgraph CFG["CONFIG — Phase 2 ★"]
+    CFG_TOML["★ .redactor.toml<br/>Discovery cwd up the tree"]:::cfg
+    CFG_PAT["★ Pattern-Override<br/>custom regexes pro Projekt"]:::cfg
+    CFG_WL["★ Whitelist-Override<br/>path-guard exceptions"]:::cfg
+    CFG_MODE["★ Mode-Override<br/>pro Extension"]:::cfg
+  end
+
+  %% ─── Hook-Schichten (erweitert) ───
+  subgraph HOOKS[".claude/hooks"]
+    HP["prompt-scan.sh<br/>UserPromptSubmit"]:::hook
+    HPR["path-guard.sh<br/>PreToolUse / Read"]:::hook
+    HPB["path-guard.sh<br/>PreToolUse / Bash"]:::hook
+    HR["read-strict.sh<br/>PreToolUse / Read"]:::hook
+    HB["bash-strict.sh<br/>PreToolUse / Bash"]:::hook
+    HNET["★ network-guard.sh<br/>PreToolUse / Bash<br/>URL-Whitelist via .redactor-urls.json"]:::hookNew
+    HPOST["post-tool-redact.sh<br/>PostToolUse Read &#124; Bash"]:::hook
+    HPWV["★ post-write-validate.sh<br/>PostToolUse Write &#124; Edit<br/>ruff / json / yaml syntax"]:::hookNew
+    HSESS["★ session-guard.sh<br/>SessionStart<br/>CLAUDE.md PII-Check"]:::hookNew
+  end
+
+  %% ─── CLI Workflow Tools (Phase 3) ───
+  subgraph CLI["CLI WORKFLOW TOOLS — Phase 3 ★"]
+    C_SCAN["★ redactor scan<br/>JSONL findings"]:::cli
+    C_CLEAN["★ redactor clean<br/>*.clean Variante"]:::cli
+    C_MOCK["★ redactor mock<br/>schema-inferred mock data"]:::cli
+    C_INST["★ redactor install-hooks<br/>deployt strict-redaction"]:::cli
+    C_SELF["★ redactor self-update<br/>pulls latest GH release"]:::cli
+  end
+
+  %% ─── Distribution (Phase 5) ───
+  subgraph DIST["DISTRIBUTION — Phase 5 ★"]
+    D_CI["★ GitHub Actions Build-Matrix<br/>win-msvc / linux-musl / mac-arm64+x86"]:::dist
+    D_REL["★ signed Releases<br/>+ checksums + auto-changelog"]:::dist
+  end
+
+  %% ─── Outcomes ───
+  subgraph OUT["OUTCOME"]
+    BSEC["BLOCK — redacted preview"]:::block
+    BPATH["BLOCK — sensitive path"]:::block
+    BREAD["BLOCK — redirect to redactor --type X"]:::block
+    BBARE["BLOCK — use redactor wrap --"]:::block
+    BSTRUCT["BLOCK — use direct file mode"]:::block
+    BURL["★ BLOCK — domain not whitelisted"]:::block
+    BLINT["★ BLOCK — lint/syntax error<br/>Claude fixt"]:::block
+    WSESS["★ WARNUNG — CLAUDE.md enthält PII"]:::warn
+    SINLINE["SANITIZED stdout<br/>UI + Model gleich"]:::sanitize
+    SPATTERN["SANITIZED stdout<br/>secrets → &lt;redacted&gt;"]:::sanitize
+    AOK["ALLOW"]:::allow
+    AUDIT["★ JSONL findings<br/>→ audit pipeline"]:::cli
+    OCLEAN["★ kunden.csv.clean<br/>anonymisiert"]:::allow
+    OMOCK["★ mock_customer.csv<br/>generated"]:::allow
+    OHOOKS["★ Hooks deployed<br/>in target .claude/"]:::allow
+    OUPD["★ Binary updated"]:::allow
+  end
+
+  %% ─── Engine wird von Hooks UND CLI verwendet ───
+  E_SEC -.feeds.-> HP
+  E_EU -.feeds.-> HP
+  E_AZ -.feeds.-> HP
+  E_IP -.feeds.-> HPOST
+  E_CONN -.feeds.-> HPOST
+  E_CERT -.feeds.-> HPOST
+  E_FP -.filters.-> HPOST
+  E_FP -.filters.-> HP
+
+  %% ─── Config feeds Engine + Hooks ───
+  CFG_TOML --> CFG_PAT
+  CFG_TOML --> CFG_WL
+  CFG_TOML --> CFG_MODE
+  CFG_PAT -.adds.-> E_SEC
+  CFG_WL -.exceptions.-> HPR
+  CFG_MODE -.ext→mode.-> HPOST
+
+  %% ─── UserPromptSubmit ───
+  UC1 --> HP
+  UC2 --> HP
+  HP -->|match| BSEC
+  HP -->|kein match| AOK
+
+  %% ─── Read paths ───
+  UC3 --> HPR
+  HPR -->|sensitive| BPATH
+  UC4 --> HPR
+  UC5 --> HPR
+  HPR -.->|not sensitive| HR
+  HR --> BREAD
+
+  %% ─── Bash paths ───
+  UC6 --> HPB
+  UC7 --> HPB
+  UC8 --> HPB
+  UC9 --> HPB
+  UC10 --> HPB
+  HPB -->|path ok| HB
+  HB --> BBARE
+  HB --> BSTRUCT
+  HB -->|^redactor| HNET
+  HNET --> BURL
+  HNET -->|domain ok| HPOST
+
+  %% ─── PostTool Outcomes ───
+  HPOST --> SINLINE
+  HPOST --> SPATTERN
+
+  %% ─── Write/Edit ───
+  UC11 --> HPWV
+  HPWV --> BLINT
+
+  %% ─── SessionStart ───
+  UC12 --> HSESS
+  HSESS --> WSESS
+
+  %% ─── CLI Workflow Tools ───
+  UC13 --> C_SCAN
+  C_SCAN --> AUDIT
+  UC14 --> C_CLEAN
+  C_CLEAN --> OCLEAN
+  UC15 --> C_MOCK
+  C_MOCK --> OMOCK
+  UC16 --> C_INST
+  C_INST --> OHOOKS
+  UC17 --> C_SELF
+  C_SELF -.GET /releases/latest.-> D_REL
+  C_SELF --> OUPD
+
+  %% ─── Distribution ───
+  D_CI -.->|builds| D_REL

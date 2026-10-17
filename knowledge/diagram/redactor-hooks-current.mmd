@@ -1,0 +1,81 @@
+---
+title: rust-redactor — Aktueller Stand (v0.2.1+structural-modes)
+config:
+  theme: neutral
+  flowchart:
+    curve: basis
+    htmlLabels: true
+---
+flowchart LR
+
+  %% ─── Klassen für Farbcoding ───
+  classDef hook       fill:#cfe0ff,stroke:#4a7fcf,stroke-width:1.5px,color:#1a3a70
+  classDef block      fill:#ffd6d6,stroke:#cc4040,stroke-width:1.5px,color:#7a1a1a
+  classDef sanitize   fill:#ffe4b8,stroke:#cc8a3d,stroke-width:1.5px,color:#5a3a10
+  classDef allow      fill:#d6f5d6,stroke:#3a8b3a,stroke-width:1.5px,color:#1a4a1a
+  classDef input      fill:#ffffff,stroke:#888,stroke-width:1px,color:#222
+
+  %% ─── Use-Cases (Tool-Aufrufe) ───
+  subgraph IN["USER / CLAUDE — Tool-Aufrufe"]
+    UC1["Prompt mit Secret<br/>sk-… / AKIA… / ghp_…"]:::input
+    UC2["Prompt sauber"]:::input
+    UC3["Read .env / id_rsa / *.pem"]:::input
+    UC4["Read foo.json / data.csv"]:::input
+    UC5["Read Cargo.toml / README.md"]:::input
+    UC6["Bash: cat foo.txt<br/>(bare command)"]:::input
+    UC7["Bash: redactor wrap -- cat foo.json<br/>(struct file via wrap)"]:::input
+    UC8["Bash: redactor wrap -- cat foo.log<br/>(unstructured)"]:::input
+    UC9["Bash: redactor --type json foo.json<br/>(direct structural)"]:::input
+    UC10["Bash: redactor wrap -- echo AKIA…"]:::input
+  end
+
+  %% ─── Hook-Schichten ───
+  subgraph HOOKS[".claude/hooks"]
+    HP["prompt-scan.sh<br/>UserPromptSubmit"]:::hook
+    HPR["path-guard.sh<br/>PreToolUse / Read"]:::hook
+    HPB["path-guard.sh<br/>PreToolUse / Bash"]:::hook
+    HR["read-strict.sh<br/>PreToolUse / Read<br/>blockt JEDEN Read"]:::hook
+    HB["bash-strict.sh<br/>PreToolUse / Bash<br/>allow ^redactor<br/>block struct-via-wrap"]:::hook
+    HPOST["post-tool-redact.sh<br/>PostToolUse Read &#124; Bash<br/>mode-aware<br/>skipt direct calls"]:::hook
+  end
+
+  %% ─── Outcomes ───
+  subgraph OUT["OUTCOME"]
+    BSEC["BLOCK — redacted prompt preview"]:::block
+    BPATH["BLOCK — sensitive path"]:::block
+    BREAD["BLOCK — use redactor --type X"]:::block
+    BBARE["BLOCK — use redactor wrap --"]:::block
+    BSTRUCT["BLOCK — use direct file mode"]:::block
+    SINLINE["SANITIZED stdout<br/>UI + Model gleich<br/>structure preserved, values &lt;redacted&gt;"]:::sanitize
+    SPATTERN["SANITIZED stdout<br/>secrets → &lt;redacted:LABEL&gt;"]:::sanitize
+    AOK["ALLOW — prompt sauber"]:::allow
+  end
+
+  %% ─── Edges: UserPromptSubmit ───
+  UC1 --> HP
+  UC2 --> HP
+  HP -->|match| BSEC
+  HP -->|kein match| AOK
+
+  %% ─── Edges: Read ───
+  UC3 --> HPR
+  UC4 --> HPR
+  UC5 --> HPR
+  HPR -->|sensitive| BPATH
+  HPR -.->|not sensitive| HR
+  HR --> BREAD
+
+  %% ─── Edges: Bash ───
+  UC6 --> HPB
+  UC7 --> HPB
+  UC8 --> HPB
+  UC9 --> HPB
+  UC10 --> HPB
+  HPB -->|path ok| HB
+  HB -->|not ^redactor| BBARE
+  HB -->|^redactor wrap +<br/>.json/.csv/.env| BSTRUCT
+  HB -->|^redactor &#40;else&#41;| HPOST
+
+  %% ─── Edges: PostToolUse ───
+  HPOST -->|direct call → skip<br/>output already sanitized| SINLINE
+  HPOST -->|wrap pattern: secret found<br/>→ block + sanitized reason| SPATTERN

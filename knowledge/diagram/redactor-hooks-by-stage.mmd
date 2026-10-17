@@ -1,0 +1,108 @@
+flowchart TD
+    classDef hook fill:#cfe0ff,stroke:#4a7fcf,color:#000
+    classDef opt fill:#ffffff,stroke:#888,color:#000
+    classDef block fill:#ffd6d6,stroke:#cc4040,color:#000
+    classDef san fill:#ffe4b8,stroke:#cc8a3d,color:#000
+    classDef allow fill:#d6f5d6,stroke:#3a8b3a,color:#000
+    classDef leak fill:#ff8080,stroke:#aa0000,color:#000
+    classDef bug fill:#ffd0d0,stroke:#aa0000,color:#000
+    classDef minimal fill:#e8f5e9,stroke:#2e7d32,color:#000
+    classDef extra fill:#fff3e0,stroke:#ef6c00,color:#000
+
+    %% ── HOOK 1: prompt-scan ───────────────────────────────────
+    subgraph H1["Hook 1 · prompt-scan (UserPromptSubmit) · MINIMAL"]
+        H1_in["stdin: prompt"]
+        H1_act["redactor --no-log"]:::hook
+        H1_a["A · prompt sauber<br/>→ {} (allow)"]:::allow
+        H1_b["B · secret matcht (sk-/AKIA/IBAN/…)<br/>→ block + redacted preview<br/>→ Claude bekommt reason, User soll reformulieren"]:::block
+        H1_in --> H1_act
+        H1_act --> H1_a
+        H1_act --> H1_b
+    end
+
+    %% ── HOOK 2: path-guard (Pre-Bash) ─────────────────────────
+    subgraph H2["Hook 2 · path-guard (PreToolUse Bash) · MINIMAL"]
+        H2_in["stdin: tool_input.command"]
+        H2_act["regex auf command-string<br/>(.env / id_rsa / .aws/creds /<br/>.pem / .key / /secrets/ / .ssh)"]:::hook
+        H2_a["A · keine sensible Substring<br/>→ continue"]:::opt
+        H2_b["B · sensible Substring<br/>→ block ('sensitive path')"]:::block
+        H2_in --> H2_act
+        H2_act --> H2_a
+        H2_act --> H2_b
+    end
+
+    %% ── HOOK 3: bash-strict ───────────────────────────────────
+    subgraph H3["Hook 3 · bash-strict (PreToolUse Bash) · MINIMAL"]
+        H3_in["continue von Hook 2"]
+        H3_act["check ^redactor + struct-file enforce"]:::hook
+        H3_a["A · ^redactor (jede Form)<br/>→ continue, command läuft"]:::opt
+        H3_b["B · bare command (cat / ls / git…)<br/>→ block + 'use redactor wrap --'"]:::block
+        H3_c["C · redactor wrap + cmd auf<br/>*.json/.csv/.env<br/>→ block + 'use --type X'"]:::block
+        H3_in --> H3_act
+        H3_act --> H3_a
+        H3_act --> H3_b
+        H3_act --> H3_c
+    end
+
+    %% ── HOOK 4: path-guard (Pre-Read) ─────────────────────────
+    subgraph H4["Hook 4 · path-guard (PreToolUse Read) · MINIMAL"]
+        H4_in["stdin: tool_input.file_path"]
+        H4_act["regex auf file_path"]:::hook
+        H4_a["A · normale Datei → continue"]:::opt
+        H4_b["B · sensible Pfad<br/>→ block ('sensitive path')"]:::block
+        H4_in --> H4_act
+        H4_act --> H4_a
+        H4_act --> H4_b
+    end
+
+    %% ── HOOK 5: read-strict ───────────────────────────────────
+    subgraph H5["Hook 5 · read-strict (PreToolUse Read) · MINIMAL"]
+        H5_in["continue von Hook 4"]
+        H5_act["block ALLE Reads"]:::hook
+        H5_a["A · jeder Read<br/>→ block + redirect zu<br/>redactor wrap -- cat <file>"]:::block
+        H5_in --> H5_act
+        H5_act --> H5_a
+    end
+
+    %% ── HOOK 6: post-tool-redact ──────────────────────────────
+    subgraph H6["Hook 6 · post-tool-redact (PostToolUse Read|Bash) · MINIMAL"]
+        H6_in["stdin: tool_response.stdout +<br/>tool_input.command"]
+        H6_act["a) startet command mit 'redactor' und nicht 'redactor wrap'?<br/>b) sonst: detect_mode aus extension im command<br/>c) redactor --type <mode> über stdout"]:::hook
+        H6_a["A · direct redactor call<br/>→ skip ({}) — schon sanitized"]:::opt
+        H6_b["B · wrap, pattern-mode,<br/>keine inline-secrets<br/>→ {} (raw passiert)"]:::allow
+        H6_c["C · wrap, pattern-mode,<br/>secret matcht<br/>→ block + sanitized reason"]:::san
+        H6_d["D · wrap+cmd zeigt auf .json/.csv/.env<br/>→ structural mode<br/>→ block + sanitized reason"]:::san
+        H6_in --> H6_act
+        H6_act --> H6_a
+        H6_act --> H6_b
+        H6_act --> H6_c
+        H6_act --> H6_d
+    end
+
+    %% ── BUG-PFAD ──────────────────────────────────────────────
+    subgraph BUGZ["BUG · -t pattern auf strukturiertes File"]
+        BG1["User: redactor -t pattern foo.csv<br/>oder --no-defaults --no-config --keywords ZZZ"]:::bug
+        BG2["H2 path-guard: kein .env<br/>→ continue"]:::bug
+        BG3["H3 bash-strict: ^redactor → A<br/>(prüft Flags NICHT)"]:::bug
+        BG4["binary läuft pattern-mode<br/>auf csv → keine inline-secrets<br/>→ stdout = roher CSV"]:::bug
+        BG5["H6 post-tool: direct call → skip<br/>→ stdout passiert 1:1"]:::bug
+        BG6["💥 DATA LEAK<br/>komplette CSV im UI + Model"]:::leak
+        BG1 --> BG2 --> BG3 --> BG4 --> BG5 --> BG6
+    end
+
+    %% ── Outcome-Sammelpunkte ──────────────────────────────────
+    O_block_global["BLOCK · Tool läuft NICHT<br/>Claude erhält 'reason' und reformuliert"]:::block
+    O_san_global["SANITIZED · Tool lief,<br/>Output durch redactor maskiert<br/>(UI + Model identisch je nach Pfad)"]:::san
+    O_allow_global["ALLOW · Tool läuft,<br/>Output unverändert ans Model"]:::allow
+
+    H1_a --> O_allow_global
+    H1_b --> O_block_global
+    H2_b --> O_block_global
+    H3_b --> O_block_global
+    H3_c --> O_block_global
+    H4_b --> O_block_global
+    H5_a --> O_block_global
+    H6_a --> O_allow_global
+    H6_b --> O_allow_global
+    H6_c --> O_san_global
+    H6_d --> O_san_global

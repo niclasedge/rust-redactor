@@ -1,0 +1,127 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }} / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            ext: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl-tools (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package archive (Linux)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NAME="redactor-${VERSION}-${{ matrix.target }}"
+          mkdir -p "dist/$NAME"
+          cp "target/${{ matrix.target }}/release/redactor" "dist/$NAME/"
+          cp LICENSE "dist/$NAME/" 2>/dev/null || true
+          cp README.md "dist/$NAME/"
+          tar -C dist -czf "dist/${NAME}.tar.gz" "$NAME"
+
+      - name: Package archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v',''
+          $name = "redactor-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path "dist/$name" -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/redactor.exe" "dist/$name/"
+          if (Test-Path LICENSE) { Copy-Item LICENSE "dist/$name/" }
+          Copy-Item README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.target }}
+          path: dist/redactor-*-${{ matrix.target }}.*
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: archive-*
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum redactor-*-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Build changelog
+        id: changelog
+        shell: bash
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          {
+            echo 'BODY<<EOF'
+            if [ -n "$PREV" ]; then
+              echo "## Changes since $PREV"
+              echo
+              git log --pretty=format:'- %s (%h)' "$PREV..${GITHUB_REF_NAME}"
+            else
+              echo "## Initial release"
+              echo
+              git log --pretty=format:'- %s (%h)' -n 50
+            fi
+            echo
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/redactor-*-*.tar.gz
+            dist/redactor-*-*.zip
+            dist/SHA256SUMS.txt
+          body: ${{ steps.changelog.outputs.BODY }}
+          draft: false
+          prerelease: false

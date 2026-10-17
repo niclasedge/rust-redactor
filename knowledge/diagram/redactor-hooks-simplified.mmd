@@ -1,0 +1,56 @@
+%% rust-redactor — Verschlankte Zielarchitektur
+%% Single binary, single hook entry-point, alles in shared core.
+
+flowchart LR
+    %% User actions
+    UA["USER / CLAUDE<br/>Prompt · Read · Bash ·<br/>Write/Edit · CLI direkt"]
+
+    %% Settings.json — single line per slot
+    CC["<b>.claude/settings.json</b><br/>jeder Slot:<br/><code>command: redactor hook</code>"]:::cfg
+
+    %% Single hook entry-point
+    HK(["<b>redactor hook</b><br/>auto-router via stdin<br/>(hook_event_name)"]):::hook
+
+    %% Five logical routes inside the binary
+    ROUTES["<b>5 interne Routes</b><br/>━━━━━━━━━━<br/>prompt · pre-bash · pre-read ·<br/>post-tool · post-write"]:::hook
+
+    %% Shared core
+    CORE["<b>shared core</b><br/>━━━━━━━━━━<br/>Pattern Engine<br/>(API-Keys + EU-PII + IP +<br/>Connection-Strings + Azure)<br/>+ False-Positive filter<br/>━━━━━━━━━━<br/>Modes (json/csv/env/pattern)<br/>━━━━━━━━━━<br/>.redactor.toml Config<br/>━━━━━━━━━━<br/>JSONL Audit Log"]:::core
+
+    %% Patterns as data
+    PATS[("assets/patterns.toml<br/>+ user-override")]:::core
+
+    %% CLI tools
+    CLI["<b>CLI Tools</b> (optional features)<br/>━━━━━━━━━━<br/>scan → JSONL findings<br/>clean → *.clean<br/>install-hooks → settings.json"]:::cli
+
+    %% Distribution
+    DIST["<b>Distribution</b> (Phase 5)<br/>━━━━━━━━━━<br/>GitHub Actions cross-build<br/>Release .tar.gz + sha256"]:::dist
+
+    %% Outcomes
+    BLK["🛑 BLOCK<br/>secret · path · read ·<br/>bare bash · struct via wrap ·<br/>URL · lint"]:::block
+    SAN["🟧 SANITIZED<br/>(UI + Model identisch)"]:::san
+    ALW["✅ ALLOW"]:::allow
+
+    %% Edges
+    UA --> CC
+    CC --> HK
+    HK --> ROUTES
+    ROUTES -.-> CORE
+    CORE --- PATS
+    UA -.-> CLI
+    CLI -.-> CORE
+    DIST -.-> CLI
+
+    ROUTES --> BLK
+    ROUTES --> SAN
+    ROUTES --> ALW
+    CLI --> SAN
+
+    classDef cfg fill:#fff8d6,stroke:#a8893a
+    classDef hook fill:#cfe0ff,stroke:#4a7fcf
+    classDef core fill:#ffe9c2,stroke:#a87a2c
+    classDef cli fill:#d4f0db,stroke:#3a8b5a
+    classDef dist fill:#ffe0e0,stroke:#c25050
+    classDef block fill:#ffd6d6,stroke:#cc4040
+    classDef san fill:#ffe4b8,stroke:#cc8a3d
+    classDef allow fill:#d6f5d6,stroke:#3a8b3a

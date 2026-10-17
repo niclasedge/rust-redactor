@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "redactor",
+  "displayName": "Redactor — strict secret/PII redaction",
+  "version": "0.8.0",
+  "description": "Strict-redaction hooks for Claude Code. Scrubs secrets and PII (API keys, tokens, PEM blocks, IBANs, keyword list) at every tool boundary via the native redactor binary. After installing the plugin, run /redactor:install to fetch the prebuilt binary (Windows / macOS / Linux) into the plugin's bin/ and activate the hooks.",
+  "author": {
+    "name": "Niclas Edge"
+  },
+  "homepage": "https://github.com/niclasedge/rust-redactor",
+  "license": "MIT",
+  "keywords": [
+    "redaction",
+    "secrets",
+    "security",
+    "pii",
+    "hooks",
+    "dlp"
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "_version": "0.6.0-bootstrap",
+  "_comment": "Strict-redaction hooks with self-bootstrap. Each command goes through wrap.sh, which sources _bootstrap.sh once (idempotent) before exec'ing the redactor binary. First call on a clean CI runner takes ~2-3s to download the prebuilt binary from GitHub Releases; all later calls are ~5-10ms.",
+  "_hook_design": "Pre-tool: path-guard + bash-strict + network-guard (Bash|PowerShell), read-strict (Read), fixed-deny (mcp__.*, Grep, NotebookEdit). Post-tool: per-extension Write/Edit validators only.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook session-start"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook pre-bash"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook pre-read"
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook deny-grep"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook deny-notebook"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook deny-mcp"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/redactor/wrap.sh hook post-write"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+# Fingerprint-level ignores live in .gitleaks.toml (path allowlist), because
+# fingerprints in `gitleaks git` mode include the commit SHA and would break
+# on every history rewrite. Intentionally empty.

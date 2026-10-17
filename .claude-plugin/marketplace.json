@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "name": "hook-redactor",
+  "description": "Strict secret/PII redaction hooks for Claude Code, backed by the native redactor binary.",
+  "owner": {
+    "name": "Niclas Edge"
+  },
+  "plugins": [
+    {
+      "name": "redactor",
+      "displayName": "Redactor — strict secret/PII redaction",
+      "description": "Strict-redaction hooks that scrub secrets/PII at every Claude Code tool boundary via the native redactor binary. Cross-platform (Windows / macOS / Linux); run /redactor:install after install.",
+      "version": "0.8.0",
+      "author": {
+        "name": "Niclas Edge"
+      },
+      "source": {
+        "source": "github",
+        "repo": "niclasedge/rust-redactor"
+      },
+      "keywords": [
+        "redaction",
+        "secrets",
+        "security",
+        "pii",
+        "hooks"
+      ]
+    }
+  ]
+}

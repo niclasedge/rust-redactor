@@ -1,0 +1,117 @@
+// rust-redactor — Aktueller Stand (v0.2.1+structural-modes, no-toml-allowlist)
+// Übersicht: Use-Cases, wo und wie die Hooks Daten schützen.
+// Farben:  blau = Hook-Layer    grün = ALLOW    rot = BLOCK    orange = sanitized
+//
+// Render:  dot -Tpng redactor-hooks-current.dot -o redactor-hooks-current.png
+//          dot -Tsvg redactor-hooks-current.dot -o redactor-hooks-current.svg
+
+digraph redactor_current {
+    rankdir=LR;
+    fontname="Inter,Helvetica,sans-serif";
+    fontsize=11;
+    labelloc=t;
+    label=<<b>rust-redactor — Aktueller Stand (v0.2.1)</b><br/>
+            <font point-size="9">Schutzschichten und Outcome je Use-Case</font>>;
+
+    node [fontname="Inter,Helvetica,sans-serif", fontsize=10, style="rounded,filled", shape=box];
+    edge [fontname="Inter,Helvetica,sans-serif", fontsize=9];
+
+    // ───── Use-Case-Quellen ─────
+    subgraph cluster_input {
+        label="USER / CLAUDE — Tool-Aufrufe";
+        labeljust=l;
+        bgcolor="#f7f7f9";
+        style="filled,rounded";
+        color="#dddddd";
+        node [fillcolor="#ffffff"];
+
+        uc1  [label="User-Prompt mit Secret\n(sk-… / AKIA… / ghp_…)"];
+        uc2  [label="User-Prompt ohne Secret"];
+        uc3  [label="Read  → .env / id_rsa / .pem"];
+        uc4  [label="Read  → foo.json / data.csv"];
+        uc5  [label="Read  → Cargo.toml / README.md"];
+        uc6  [label="Bash  → cat foo.txt\n(bare command)"];
+        uc7  [label="Bash  → redactor wrap -- cat foo.json\n(struct file via wrap)"];
+        uc8  [label="Bash  → redactor wrap -- cat foo.log\n(unstructured)"];
+        uc9  [label="Bash  → redactor --type json foo.json\n(direct structural mode)"];
+        uc10 [label="Bash  → redactor wrap -- echo AKIA…"];
+    }
+
+    // ───── Hook-Schichten ─────
+    subgraph cluster_hooks {
+        label="HOOK-LAYERS (.claude/hooks)";
+        labeljust=l;
+        bgcolor="#eef4ff";
+        style="filled,rounded";
+        color="#aacaee";
+        node [fillcolor="#cfe0ff", color="#4a7fcf"];
+
+        h_prompt   [label="prompt-scan.sh\n[UserPromptSubmit]\nredactor --no-log\nblockt bei Match"];
+        h_pathBash [label="path-guard.sh\n[PreToolUse / Bash]\nblockt sensitive\nPfade in command"];
+        h_pathRead [label="path-guard.sh\n[PreToolUse / Read]\nblockt sensitive\nPfade in file_path"];
+        h_bash     [label="bash-strict.sh\n[PreToolUse / Bash]\n• allow ^redactor\n• block struct-file via wrap"];
+        h_read     [label="read-strict.sh\n[PreToolUse / Read]\nblockt JEDEN Read\n→ redirect zu redactor"];
+        h_post     [label="post-tool-redact.sh\n[PostToolUse Read|Bash]\nmode-aware: json/csv/env/pattern\nskippt direct redactor calls"];
+    }
+
+    // ───── Outcomes ─────
+    subgraph cluster_out {
+        label="OUTCOME";
+        labeljust=l;
+        bgcolor="#f4faf4";
+        style="filled,rounded";
+        color="#bcd9bc";
+        node [shape=box, style="rounded,filled"];
+
+        block_secret [label="BLOCK\n+ redacted preview", fillcolor="#ffd6d6", color="#cc4040"];
+        block_path   [label="BLOCK\n'sensitive path'",   fillcolor="#ffd6d6", color="#cc4040"];
+        block_read   [label="BLOCK\n'use redactor --type X'", fillcolor="#ffd6d6", color="#cc4040"];
+        block_bare   [label="BLOCK\n'use redactor wrap --'",  fillcolor="#ffd6d6", color="#cc4040"];
+        block_struct [label="BLOCK\n'use direct file mode'",  fillcolor="#ffd6d6", color="#cc4040"];
+        san_inline   [label="SANITIZED stdout\n(structure preserved, values <redacted>)\nUI + Model gleich", fillcolor="#ffe4b8", color="#cc8a3d"];
+        san_pattern  [label="SANITIZED stdout\n(secrets → <redacted:LABEL>)", fillcolor="#ffe4b8", color="#cc8a3d"];
+        allow_clean  [label="ALLOW\n(prompt sauber)", fillcolor="#d6f5d6", color="#3a8b3a"];
+    }
+
+    // ───── Edges Use-Cases → Hooks → Outcome ─────
+
+    // 1. UserPromptSubmit
+    uc1 -> h_prompt   [label="stdin"];
+    uc2 -> h_prompt;
+    h_prompt -> block_secret [label="match", color="#cc4040"];
+    h_prompt -> allow_clean  [label="kein match", color="#3a8b3a"];
+
+    // 2. Read → sensitive path
+    uc3 -> h_pathRead [label="file_path"];
+    h_pathRead -> block_path [color="#cc4040"];
+
+    // 3. Read → struct/code file (kein sensitive path)
+    uc4 -> h_pathRead [style=dashed];
+    h_pathRead -> h_read [label="not sensitive", color="#3a8b3a"];
+    uc5 -> h_pathRead [style=dashed];
+    h_read -> block_read [label="any path\n(no allowlist)", color="#cc4040"];
+
+    // 4. Bash bare command
+    uc6 -> h_pathBash;
+    h_pathBash -> h_bash [label="not sensitive", color="#3a8b3a"];
+    h_bash -> block_bare [label="not ^redactor", color="#cc4040"];
+
+    // 5. Bash wrap+cat structural file
+    uc7 -> h_pathBash;
+    h_bash -> block_struct [label="^redactor wrap +\n.json/.csv/.env in command", color="#cc4040"];
+
+    // 6. Bash wrap on unstructured
+    uc8 -> h_pathBash;
+    h_bash -> h_post [label="^redactor wrap\n(no struct ext)", color="#3a8b3a"];
+
+    // 7. Bash direct redactor mode
+    uc9 -> h_pathBash;
+    h_bash -> h_post [label="^redactor (not wrap)", style=dashed];
+
+    // 8. Bash wrap+echo with secret
+    uc10 -> h_pathBash;
+
+    // PostToolUse logic
+    h_post -> san_inline  [label="direct call → skip\n(stdout already sanitized)", color="#cc8a3d"];
+    h_post -> san_pattern [label="wrap pattern: secret found\n→ block + redacted reason", color="#cc8a3d"];
+}

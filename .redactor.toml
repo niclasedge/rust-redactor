@@ -1,0 +1,5 @@
+[policy]
+# Hook-config templates (.claude/settings.json, hooks-template/.claude/settings.json)
+# are non-secret JSON. Allow direct reads so we can audit/edit them.
+strict_json = false
+mask_username = false
