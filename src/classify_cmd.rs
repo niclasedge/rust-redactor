@@ -1388,14 +1388,12 @@ keywords = ["obsidian", "lorem ipsum"]
     }
 
     use std::fs;
-    #[cfg(unix)]
-    use std::sync::Mutex;
     use tempfile::tempdir;
 
     // Tests in this module mutate REDACTOR_CLASSIFIER_PYTHON. Serialize on
-    // a single mutex (same pattern as src/classify.rs).
+    // the mutex shared with src/classify.rs tests (same process-global var).
     #[cfg(unix)]
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    use crate::classify::CLASSIFIER_ENV_LOCK as ENV_LOCK;
 
     #[cfg(unix)]
     fn write_mock_python(dir: &Path, stdout_body: &str, exit_code: i32) -> PathBuf {

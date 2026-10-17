@@ -45,6 +45,12 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 300;
 
 const TIMEOUT_ENV: &str = "REDACTOR_CLASSIFIER_TIMEOUT_SECS";
+/// Process-wide lock for tests that mutate `REDACTOR_CLASSIFIER_PYTHON`.
+/// Shared by `classify` and `classify_cmd` tests: separate per-module locks
+/// let one module clear the variable while the other still depends on it.
+#[cfg(all(test, unix))]
+pub(crate) static CLASSIFIER_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 const PYTHON_PATH_ENV: &str = "REDACTOR_CLASSIFIER_PYTHON";
 
 /// One file entry sent to the classifier — see spec §5.5 request schema.
@@ -320,15 +326,14 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     #[cfg(unix)]
-    use std::sync::Mutex;
-    #[cfg(unix)]
     use tempfile::tempdir;
 
     // The tests in this module mutate `REDACTOR_CLASSIFIER_PYTHON` — a global.
     // cargo runs tests in parallel by default, so we serialize on a single
-    // mutex. Each test takes the lock for its whole body.
+    // mutex shared with `classify_cmd` tests (same env var, same process).
+    // Each test takes the lock for its whole body.
     #[cfg(unix)]
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    use super::CLASSIFIER_ENV_LOCK as ENV_LOCK;
 
     /// Write a fake "python" shell script that prints the canned response on
     /// stdout, then returns the requested exit code. Returns the path so a
